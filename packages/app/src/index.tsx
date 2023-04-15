@@ -30,6 +30,7 @@ import { WalletRoutes } from "Pages/WalletPage";
 import NostrLinkHandler from "Pages/NostrLinkHandler";
 import Thread from "Element/Thread";
 import { SubscribeRoutes } from "Pages/subscribe";
+import TrendingUsers from "Pages/TrendingUsers";
 
 /**
  * HTTP query provider
@@ -88,6 +89,10 @@ export const router = createBrowserRouter([
       {
         path: "/t/:tag",
         element: <HashTagsPage />,
+      },
+      {
+        path: "/trending",
+        element: <TrendingUsers />,
       },
       {
         path: "/search/:keyword?",

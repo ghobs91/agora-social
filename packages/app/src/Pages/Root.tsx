@@ -11,6 +11,7 @@ import { debounce, getRelayName, sha256, unixNow, unwrap } from "Util";
 import useLogin from "Hooks/useLogin";
 
 import messages from "./messages";
+import TrendingUsers from "./TrendingUsers";
 
 interface RelayOption {
   url: string;
@@ -39,6 +40,11 @@ export default function RootPage() {
       value: 2,
       data: "/global",
     },
+    TrendingUsers: {
+      text: formatMessage(messages.TrendingUsers),
+      value: 3,
+      data: "/trendingusers",
+    },
   };
   const tab = useMemo(() => {
     const pTab = location.pathname.split("/").slice(-1)[0];
@@ -48,6 +54,9 @@ export default function RootPage() {
       }
       case "global": {
         return RootTab.Global;
+      }
+      case "trending users": {
+        return RootTab.TrendingUsers;
       }
       default: {
         return RootTab.Posts;
@@ -67,7 +76,7 @@ export default function RootPage() {
   const tagTabs = tags.item.map((t, idx) => {
     return { text: `#${t}`, value: idx + 3, data: `/tag/${t}` };
   });
-  const tabs = [RootTab.Posts, RootTab.PostsAndReplies, RootTab.Global, ...tagTabs];
+  const tabs = [RootTab.Posts, RootTab.PostsAndReplies, RootTab.Global, RootTab.TrendingUsers, ...tagTabs];
 
   return (
     <>
@@ -217,6 +226,10 @@ export const RootRoutes = [
       {
         path: "conversations",
         element: <ConversationsTab />,
+      },
+      {
+        path: "trending users",
+        element: <TrendingUsers />,
       },
       {
         path: "tag/:tag",

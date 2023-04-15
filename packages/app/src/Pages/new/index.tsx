@@ -6,11 +6,13 @@ import NewUserName from "Pages/new/NewUsername";
 import NewUserFlow from "Pages/new/NewUserFlow";
 import ImportFollows from "Pages/new/ImportFollows";
 import DiscoverFollows from "Pages/new/DiscoverFollows";
+import TrendingUsers from "Pages/TrendingUsers";
 
 const USERNAME = "/new/username";
 const IMPORT = "/new/import";
 const DISCOVER = "/new/discover";
 const VERIFY = "/new/verify";
+const TRENDINGUSERS = "/trendingusers"
 
 export const NewUserRoutes: RouteObject[] = [
   {
@@ -32,5 +34,9 @@ export const NewUserRoutes: RouteObject[] = [
   {
     path: DISCOVER,
     element: <DiscoverFollows />,
+  },
+  {
+    path: TRENDINGUSERS,
+    element: <TrendingUsers />,
   },
 ];

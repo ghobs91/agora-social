@@ -32,6 +32,7 @@ export default defineMessages({
   AvoidImpersonators: { defaultMessage: "Prevent fake accounts from imitating you" },
   EasierToFind: { defaultMessage: "Make your profile easier to find and share" },
   Funding: { defaultMessage: "Fund developers and platforms providing NIP-05 verification services" },
+  TrendingUsers: { defaultMessage: "Trending Users" },
   SnortSocialNip: {
     defaultMessage: `Our very own NIP-05 verification service, help support the development of this site and get a shiny special badge on our site!`,
   },
