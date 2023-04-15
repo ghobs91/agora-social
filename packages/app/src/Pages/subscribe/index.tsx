@@ -58,16 +58,20 @@ export function SubscribePage() {
               <h2>{mapPlanName(a.id)}</h2>
               <p>
                 <FormattedMessage
-                  defaultMessage="Support Snort every month for {price} sats and receive the following rewards"
+                  defaultMessage="Subscribe to Snort {plan} for {price} and receive the following rewards"
                   values={{
-                    price: <b>{formatShort(a.price)}</b>,
+                    plan: mapPlanName(a.id),
+                    price: <b>{formatShort(a.price)} sats/mo</b>,
                   }}
                 />
                 :
               </p>
+              <b>
+                <FormattedMessage defaultMessage="Not all features are built yet, more features to be added soon!" />
+              </b>
               <ul>
                 {a.unlocks.map(b => (
-                  <li>{mapFeatureName(b)}</li>
+                  <li>{mapFeatureName(b)} </li>
                 ))}
                 {lower.map(b => (
                   <li>
@@ -86,10 +90,7 @@ export function SubscribePage() {
                 {a.disabled ? (
                   <FormattedMessage defaultMessage="Coming soon" />
                 ) : (
-                  <FormattedMessage
-                    defaultMessage="Subscribe for {amount}/mo"
-                    values={{ amount: formatShort(a.price) }}
-                  />
+                  <FormattedMessage defaultMessage="Subscribe" />
                 )}
               </AsyncButton>
             </div>
