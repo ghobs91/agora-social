@@ -1,7 +1,6 @@
 import "./Preferences.css";
 
 import { FormattedMessage, useIntl } from "react-intl";
-import { Link } from "react-router-dom";
 import emoji from "@jukben/emoji-search";
 
 import useLogin from "Hooks/useLogin";
@@ -10,6 +9,24 @@ import { DefaultImgProxy } from "Const";
 import { unwrap } from "Util";
 
 import messages from "./messages";
+
+export const AllLanguageCodes = [
+  "en",
+  "ja",
+  "es",
+  "hu",
+  "zh-CN",
+  "zh-TW",
+  "fr",
+  "ar",
+  "it",
+  "id",
+  "de",
+  "ru",
+  "sv",
+  "hr",
+  "ta-IN",
+];
 
 const PreferencesPage = () => {
   const { formatMessage } = useIntl();
@@ -38,15 +55,13 @@ const PreferencesPage = () => {
               })
             }
             style={{ textTransform: "capitalize" }}>
-            {["en", "ja", "es", "hu", "zh-CN", "zh-TW", "fr", "ar", "it", "id", "de", "ru", "sv", "hr", "ta-IN"]
-              .sort()
-              .map(a => (
-                <option value={a}>
-                  {new Intl.DisplayNames([a], {
-                    type: "language",
-                  }).of(a)}
-                </option>
-              ))}
+            {AllLanguageCodes.sort().map(a => (
+              <option value={a}>
+                {new Intl.DisplayNames([a], {
+                  type: "language",
+                }).of(a)}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -146,42 +161,6 @@ const PreferencesPage = () => {
             defaultValue={perf.defaultZapAmount}
             min={1}
             onChange={e => updatePreferences(login, { ...perf, defaultZapAmount: parseInt(e.target.value || "0") })}
-          />
-        </div>
-      </div>
-      <div className="card flex">
-        <div className="flex f-col f-grow">
-          <div>
-            <FormattedMessage defaultMessage="Fast Zap Donation" />
-          </div>
-          <small>
-            <FormattedMessage
-              defaultMessage="For each Fast Zap an additional {percentage}% ({amount} sats) of the zap amount will be sent to the Snort developers as a donation."
-              values={{
-                percentage: perf.fastZapDonate * 100,
-                amount: Math.floor(perf.defaultZapAmount * perf.fastZapDonate),
-              }}
-            />
-            <br />
-            <FormattedMessage
-              defaultMessage="For more information about donations see {link}."
-              values={{
-                link: (
-                  <Link to="/donate">
-                    <FormattedMessage defaultMessage="Donate Page" />
-                  </Link>
-                ),
-              }}
-            />
-          </small>
-        </div>
-        <div>
-          <input
-            type="number"
-            defaultValue={perf.fastZapDonate * 100}
-            min={0}
-            max={100}
-            onChange={e => updatePreferences(login, { ...perf, fastZapDonate: parseInt(e.target.value || "0") / 100 })}
           />
         </div>
       </div>
