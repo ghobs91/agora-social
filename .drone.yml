@@ -22,12 +22,12 @@ steps:
         from_secret: crowdin_token
     commands:
       - git fetch origin
-      - git switch -c lang 2>/dev/null || git checkout origin/lang
+      - git switch -c lang 2>/dev/null || (git checkout origin/lang && git pull)
       - git config --global user.email drone@v0l.io
       - git config --global user.name "Drone CI"
       - git remote set-url origin https://drone:$TOKEN@git.v0l.io/Kieran/snort.git
       - yarn install
-      - npx @crowdin/cli upload -b main -T $CTOKEN
+      - npx @crowdin/cli upload sources -b main -T $CTOKEN
       - npx @crowdin/cli pull -b main -T $CTOKEN
       - yarn workspace @snort/app format
       - git diff
@@ -49,6 +49,16 @@ trigger:
 metadata:
   namespace: git
 steps:
+  - name: Build site
+    image: node:current-bullseye
+    volumes:
+      - name: cache
+        path: /cache
+    environment: 
+      YARN_CACHE_FOLDER: /cache/.yarn-docker
+    commands:
+      - yarn install
+      - yarn build
   - name: build docker image
     image: r.j3ss.co/img
     privileged: true
@@ -65,7 +75,7 @@ steps:
         --platform linux/amd64,linux/arm64 \
         --cache-from "type=local,src=/cache" \
         --cache-to "type=local,dest=/cache" \
-        .
+        -f Dockerfile.prebuilt .
       - img push git.v0l.io/kieran/snort:latest
 volumes:
 - name: cache

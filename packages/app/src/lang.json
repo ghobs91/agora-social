@@ -407,6 +407,9 @@
   "HOzFdo": {
     "defaultMessage": "Muted"
   },
+  "HWbkEK": {
+    "defaultMessage": "Clear cache and reload"
+  },
   "HbefNb": {
     "defaultMessage": "Open Wallet"
   },
@@ -790,6 +793,9 @@
   },
   "cE4Hfw": {
     "defaultMessage": "Discover"
+  },
+  "cFbU1B": {
+    "defaultMessage": "Using Alby? Go to {link} to get your NWC config!"
   },
   "cPIKU2": {
     "defaultMessage": "Following"
