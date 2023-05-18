@@ -1,10 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 import { decodeInvoice, unwrap } from "Util";
-import { LNCWallet } from "./LNCWallet";
 import LNDHubWallet from "./LNDHub";
 import { NostrConnectWallet } from "./NostrWalletConnect";
-import { CashuWallet } from "./Cashu";
 import { setupWebLNWalletConfig, WebLNWallet } from "./WebLN";
 
 export enum WalletKind {
@@ -102,6 +100,7 @@ export type MilliSats = number;
 
 export interface LNWallet {
   isReady(): boolean;
+  canAutoLogin(): boolean;
   getInfo: () => Promise<WalletInfo>;
   login: (password?: string) => Promise<boolean>;
   close: () => Promise<boolean>;
@@ -142,8 +141,8 @@ export class WalletStore {
       configs: [],
     });
     this.load(false);
-    setupWebLNWalletConfig(this);
     this.snapshotState();
+    setupWebLNWalletConfig(this);
   }
 
   hook(fn: WalletStateHook) {
@@ -171,7 +170,13 @@ export class WalletStore {
     } else {
       const w = this.#activateWallet(activeConfig);
       if (w) {
-        this.#instance.set(activeConfig.id, w);
+        if ("then" in w) {
+          w.then(wx => {
+            this.#instance.set(activeConfig.id, wx);
+            this.snapshotState();
+          });
+          return undefined;
+        }
         return w;
       } else {
         throw new Error("Unable to activate wallet config");
@@ -238,11 +243,10 @@ export class WalletStore {
     }
   }
 
-  #activateWallet(cfg: WalletConfig): LNWallet | undefined {
+  #activateWallet(cfg: WalletConfig): LNWallet | Promise<LNWallet> | undefined {
     switch (cfg.kind) {
       case WalletKind.LNC: {
-        const w = LNCWallet.Empty();
-        return w;
+        return import("./LNCWallet").then(({ LNCWallet }) => LNCWallet.Empty());
       }
       case WalletKind.WebLN: {
         return new WebLNWallet();
@@ -254,7 +258,7 @@ export class WalletStore {
         return new NostrConnectWallet(unwrap(cfg.data));
       }
       case WalletKind.Cashu: {
-        return new CashuWallet(unwrap(cfg.data));
+        return import("./Cashu").then(({ CashuWallet }) => new CashuWallet(unwrap(cfg.data)));
       }
     }
   }

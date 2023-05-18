@@ -1,4 +1,4 @@
-import { LNWallet, Sats, WalletError, WalletErrorCode, WalletInfo, WalletInvoice } from "Wallet";
+import { InvoiceRequest, LNWallet, Sats, WalletError, WalletErrorCode, WalletInfo, WalletInvoice } from "Wallet";
 
 import { CashuMint, CashuWallet as TheCashuWallet, Proof } from "@cashu/cashu-ts";
 
@@ -8,6 +8,10 @@ export class CashuWallet implements LNWallet {
 
   constructor(mint: string) {
     this.#mint = mint;
+  }
+
+  canAutoLogin(): boolean {
+    return true;
   }
 
   isReady(): boolean {
