@@ -1,4 +1,3 @@
-import { requestProvider, WebLNProvider } from "webln";
 import {
   InvoiceRequest,
   LNWallet,
@@ -13,7 +12,6 @@ import {
   WalletKind,
   WalletStore,
 } from "Wallet";
-import { unwrap } from "Util";
 import { barrierQueue, processWorkQueue, WorkQueueItem } from "WorkQueue";
 
 const WebLNQueue: Array<WorkQueueItem> = [];
@@ -22,10 +20,9 @@ processWorkQueue(WebLNQueue);
 /**
  * Adds a wallet config for WebLN if detected
  */
-export async function setupWebLNWalletConfig(store: WalletStore) {
+export function setupWebLNWalletConfig(store: WalletStore) {
   const wallets = store.list();
-  const provider = await requestProvider();
-  if (provider && !wallets.some(a => a.kind === WalletKind.WebLN)) {
+  if (window.webln && !wallets.some(a => a.kind === WalletKind.WebLN)) {
     const newConfig = {
       id: "webln",
       kind: WalletKind.WebLN,
@@ -39,10 +36,8 @@ export async function setupWebLNWalletConfig(store: WalletStore) {
 }
 
 export class WebLNWallet implements LNWallet {
-  #provider?: WebLNProvider;
-
   isReady(): boolean {
-    return this.#provider !== undefined;
+    return window.webln !== undefined && window.webln !== null;
   }
 
   canAutoLogin(): boolean {
@@ -51,8 +46,8 @@ export class WebLNWallet implements LNWallet {
 
   async getInfo(): Promise<WalletInfo> {
     await this.login();
-    if (this.isReady() && this.#provider) {
-      const rsp = await barrierQueue(WebLNQueue, async () => await unwrap(this.#provider).getInfo());
+    if (this.isReady()) {
+      const rsp = await barrierQueue(WebLNQueue, async () => await window.webln?.getInfo());
       if (rsp) {
         return {
           nodePubKey: rsp.node.pubkey,
@@ -66,8 +61,8 @@ export class WebLNWallet implements LNWallet {
   }
 
   async login(): Promise<boolean> {
-    if (this.#provider === undefined) {
-      this.#provider = await requestProvider();
+    if (window.webln) {
+      await window.webln.enable();
     }
     return true;
   }
@@ -86,7 +81,7 @@ export class WebLNWallet implements LNWallet {
       const rsp = await barrierQueue(
         WebLNQueue,
         async () =>
-          await unwrap(this.#provider).makeInvoice({
+          await window.webln?.makeInvoice({
             amount: req.amount,
             defaultMemo: req.memo,
           })
@@ -109,7 +104,7 @@ export class WebLNWallet implements LNWallet {
       if (!invoice) {
         throw new WalletError(WalletErrorCode.InvalidInvoice, "Could not parse invoice");
       }
-      const rsp = await barrierQueue(WebLNQueue, async () => await unwrap(this.#provider).sendPayment(pr));
+      const rsp = await barrierQueue(WebLNQueue, async () => await window.webln?.sendPayment(pr));
       if (rsp) {
         invoice.state = WalletInvoiceState.Paid;
         invoice.preimage = rsp.preimage;
