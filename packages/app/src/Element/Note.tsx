@@ -3,8 +3,9 @@ import React, { useMemo, useState, useLayoutEffect, ReactNode } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useInView } from "react-intersection-observer";
 import { useIntl, FormattedMessage } from "react-intl";
-import { TaggedRawEvent, HexKey, EventKind, NostrPrefix, Lists } from "@snort/nostr";
+import { TaggedRawEvent, HexKey, EventKind, NostrPrefix, Lists, EventExt } from "@snort/system";
 
+import { System } from "index";
 import useEventPublisher from "Feed/EventPublisher";
 import Icon from "Icons/Icon";
 import { parseZap } from "Element/Zap";
@@ -19,14 +20,13 @@ import {
   normalizeReaction,
   Reaction,
   profileLink,
-} from "Util";
+} from "SnortUtils";
 import NoteFooter, { Translation } from "Element/NoteFooter";
 import NoteTime from "Element/NoteTime";
 import Reveal from "Element/Reveal";
 import useModeration from "Hooks/useModeration";
-import { UserCache } from "Cache/UserCache";
+import { UserCache } from "Cache";
 import Poll from "Element/Poll";
-import { EventExt } from "System/EventExt";
 import useLogin from "Hooks/useLogin";
 import { setBookmarked, setPinned } from "Login";
 import { NostrFileElement } from "Element/NostrFileHeader";
@@ -152,7 +152,7 @@ export default function Note(props: NoteProps) {
       if (window.confirm(formatMessage(messages.ConfirmUnpin))) {
         const es = pinned.item.filter(e => e !== id);
         const ev = await publisher.noteList(es, Lists.Pinned);
-        publisher.broadcast(ev);
+        System.BroadcastEvent(ev);
         setPinned(login, es, ev.created_at * 1000);
       }
     }
@@ -163,7 +163,7 @@ export default function Note(props: NoteProps) {
       if (window.confirm(formatMessage(messages.ConfirmUnbookmark))) {
         const es = bookmarked.item.filter(e => e !== id);
         const ev = await publisher.noteList(es, Lists.Bookmarked);
-        publisher.broadcast(ev);
+        System.BroadcastEvent(ev);
         setBookmarked(login, es, ev.created_at * 1000);
       }
     }
@@ -247,8 +247,8 @@ export default function Note(props: NoteProps) {
     }
 
     const maxMentions = 2;
-    const replyId = thread?.replyTo?.Event ?? thread?.root?.Event;
-    const replyRelayHints = thread?.replyTo?.Relay ?? thread.root?.Relay;
+    const replyId = thread?.replyTo?.value ?? thread?.root?.value;
+    const replyRelayHints = thread?.replyTo?.relay ?? thread.root?.relay;
     const mentions: { pk: string; name: string; link: ReactNode }[] = [];
     for (const pk of thread?.pubKeys ?? []) {
       const u = UserCache.getFromCache(pk);

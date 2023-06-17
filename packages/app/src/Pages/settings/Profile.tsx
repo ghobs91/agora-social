@@ -3,13 +3,15 @@ import Nostrich from "nostrich.webp";
 import { useEffect, useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { useNavigate } from "react-router-dom";
+import { mapEventToProfile } from "@snort/system";
 
+import { System } from "index";
 import useEventPublisher from "Feed/EventPublisher";
 import { useUserProfile } from "Hooks/useUserProfile";
-import { openFile } from "Util";
+import { openFile } from "SnortUtils";
 import useFileUpload from "Upload";
 import AsyncButton from "Element/AsyncButton";
-import { mapEventToProfile, UserCache } from "Cache";
+import { UserCache } from "Cache";
 import useLogin from "Hooks/useLogin";
 import AvatarEditor from "Element/AvatarEditor";
 import Icon from "Icons/Icon";
@@ -76,7 +78,7 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
 
     if (publisher) {
       const ev = await publisher.metadata(userCopy);
-      publisher.broadcast(ev);
+      System.BroadcastEvent(ev);
 
       const newProfile = mapEventToProfile(ev);
       if (newProfile) {

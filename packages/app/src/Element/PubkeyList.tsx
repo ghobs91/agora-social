@@ -1,7 +1,8 @@
-import { RawEvent } from "@snort/nostr";
+import { NostrEvent } from "@snort/system";
 import { FormattedMessage, FormattedNumber } from "react-intl";
+import { LNURL } from "@snort/shared";
 
-import { dedupe, hexToBech32, unixNow } from "Util";
+import { dedupe, hexToBech32, unixNow } from "SnortUtils";
 import FollowListBase from "Element/FollowListBase";
 import AsyncButton from "Element/AsyncButton";
 import { useWallet } from "Wallet";
@@ -9,11 +10,10 @@ import { Toastore } from "Toaster";
 import { getDisplayName } from "Element/ProfileImage";
 import { UserCache } from "Cache";
 import useLogin from "Hooks/useLogin";
-import { LNURL } from "LNURL";
 import useEventPublisher from "Feed/EventPublisher";
 import { WalletInvoiceState } from "Wallet";
 
-export default function PubkeyList({ ev, className }: { ev: RawEvent; className?: string }) {
+export default function PubkeyList({ ev, className }: { ev: NostrEvent; className?: string }) {
   const wallet = useWallet();
   const login = useLogin();
   const publisher = useEventPublisher();

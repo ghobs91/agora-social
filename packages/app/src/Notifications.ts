@@ -1,12 +1,10 @@
 import Nostrich from "nostrich.webp";
 
-import { TaggedRawEvent } from "@snort/nostr";
-import { EventKind } from "@snort/nostr";
-import { MetadataCache } from "Cache";
+import { TaggedRawEvent, EventKind, MetadataCache } from "@snort/system";
 import { getDisplayName } from "Element/ProfileImage";
 import { MentionRegex } from "Const";
-import { tagFilterOfTextRepost, unwrap } from "Util";
-import { UserCache } from "Cache/UserCache";
+import { tagFilterOfTextRepost, unwrap } from "SnortUtils";
+import { UserCache } from "Cache";
 import { LoginSession } from "Login";
 
 export interface NotificationRequest {

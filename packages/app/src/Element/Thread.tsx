@@ -2,10 +2,17 @@ import "./Thread.css";
 import { useMemo, useState, ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { useNavigate, useLocation, Link, useParams } from "react-router-dom";
-import { TaggedRawEvent, u256, EventKind, NostrPrefix } from "@snort/nostr";
-import { EventExt, Thread as ThreadInfo } from "System/EventExt";
+import {
+  TaggedRawEvent,
+  u256,
+  EventKind,
+  NostrPrefix,
+  EventExt,
+  Thread as ThreadInfo,
+  parseNostrLink,
+} from "@snort/system";
 
-import { eventLink, unwrap, getReactions, parseNostrLink, getAllReactions, findTag } from "Util";
+import { eventLink, unwrap, getReactions, getAllReactions, findTag } from "SnortUtils";
 import BackButton from "Element/BackButton";
 import Note from "Element/Note";
 import NoteGhost from "Element/NoteGhost";
@@ -211,9 +218,9 @@ export default function Thread() {
   const location = useLocation();
 
   const link = parseNostrLink(params.id ?? "", NostrPrefix.Note);
-  const thread = useThreadFeed(unwrap(link));
+  const thread = useThreadFeed(link);
 
-  const [currentId, setCurrentId] = useState(link?.id);
+  const [currentId, setCurrentId] = useState(link.id);
 
   const navigate = useNavigate();
   const isSingleNote = thread.data?.filter(a => a.kind === EventKind.TextNote).length === 1;
@@ -232,9 +239,9 @@ export default function Thread() {
         .sort((a, b) => b.created_at - a.created_at)
         .forEach(v => {
           const t = EventExt.extractThread(v);
-          let replyTo = t?.replyTo?.Event ?? t?.root?.Event;
-          if (t?.root?.ATag) {
-            const parsed = t.root.ATag.split(":");
+          let replyTo = t?.replyTo?.value ?? t?.root?.value;
+          if (t?.root?.key === "a" && t?.root?.value) {
+            const parsed = t.root.value.split(":");
             replyTo = thread.data?.find(
               a => a.kind === Number(parsed[0]) && a.pubkey === parsed[1] && findTag(a, "d") === parsed[2]
             )?.id;
@@ -267,14 +274,14 @@ export default function Thread() {
 
       // sometimes the root event ID is missing, and we can only take the happy path if the root event ID exists
       if (replyTo) {
-        if (replyTo.ATag) {
-          const parsed = replyTo.ATag.split(":");
+        if (replyTo.key === "a" && replyTo.value) {
+          const parsed = replyTo.value.split(":");
           return thread.data?.find(
             a => a.kind === Number(parsed[0]) && a.pubkey === parsed[1] && findTag(a, "d") === parsed[2]
           );
         }
-        if (replyTo.Event) {
-          return thread.data?.find(a => a.id === replyTo.Event);
+        if (replyTo.value) {
+          return thread.data?.find(a => a.id === replyTo.value);
         }
       }
 
@@ -298,7 +305,11 @@ export default function Thread() {
   const parent = useMemo(() => {
     if (root) {
       const currentThread = EventExt.extractThread(root);
-      return currentThread?.replyTo?.Event ?? currentThread?.root?.Event ?? currentThread?.root?.ATag;
+      return (
+        currentThread?.replyTo?.value ??
+        currentThread?.root?.value ??
+        (currentThread?.root?.key === "a" && currentThread.root?.value)
+      );
     }
   }, [root]);
 

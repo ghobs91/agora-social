@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import useLogin from "Hooks/useLogin";
 import { DefaultPreferences, updatePreferences, UserPreferences } from "Login";
 import { DefaultImgProxy } from "Const";
-import { unwrap } from "Util";
+import { unwrap } from "SnortUtils";
 
 import messages from "./messages";
 
@@ -115,8 +115,8 @@ const PreferencesPage = () => {
                 defaultRootTab: e.target.value,
               } as UserPreferences)
             }>
-            <option value="posts">
-              <FormattedMessage {...messages.Posts} />
+            <option value="notes">
+              <FormattedMessage defaultMessage="Notes" />
             </option>
             <option value="conversations">
               <FormattedMessage {...messages.Conversations} />

@@ -1,9 +1,7 @@
 import { UserCache } from "Cache";
 import { getDisplayName } from "Element/ProfileImage";
-import ExternalStore from "ExternalStore";
-import { LNURL } from "LNURL";
+import { LNURL, ExternalStore, unixNow } from "@snort/shared";
 import { Toastore } from "Toaster";
-import { unixNow } from "Util";
 import { LNWallet, WalletInvoiceState, Wallets } from "Wallet";
 
 export enum ZapPoolRecipientType {
@@ -21,13 +19,12 @@ export interface ZapPoolRecipient {
 }
 
 class ZapPool extends ExternalStore<Array<ZapPoolRecipient>> {
-  #store: Map<string, ZapPoolRecipient>;
+  #store = new Map<string, ZapPoolRecipient>();
   #isPayoutInProgress = false;
-  #lastPayout: number = 0;
+  #lastPayout = 0;
 
   constructor() {
     super();
-    this.#store = new Map();
     this.#load();
     setTimeout(() => this.#autoPayout().catch(console.error), 5_000);
   }

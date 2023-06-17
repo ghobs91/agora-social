@@ -2,9 +2,10 @@ import "./ProfilePage.css";
 import { useEffect, useState } from "react";
 import { useIntl, FormattedMessage } from "react-intl";
 import { useNavigate, useParams } from "react-router-dom";
-import { encodeTLV, EventKind, HexKey, NostrPrefix } from "@snort/nostr";
+import { encodeTLV, EventKind, HexKey, NostrPrefix, tryParseNostrLink } from "@snort/system";
+import { LNURL } from "@snort/shared";
 
-import { parseNostrLink, getReactions, unwrap } from "Util";
+import { getReactions, unwrap } from "SnortUtils";
 import { formatShort } from "Number";
 import Note from "Element/Note";
 import Bookmarks from "Element/Bookmarks";
@@ -23,7 +24,7 @@ import useModeration from "Hooks/useModeration";
 import useZapsFeed from "Feed/ZapsFeed";
 import { default as ZapElement } from "Element/Zap";
 import FollowButton from "Element/FollowButton";
-import { parseId, hexToBech32 } from "Util";
+import { parseId, hexToBech32 } from "SnortUtils";
 import Avatar from "Element/Avatar";
 import Timeline from "Element/Timeline";
 import Text from "Element/Text";
@@ -43,7 +44,6 @@ import { ProxyImg } from "Element/ProxyImg";
 import useHorizontalScroll from "Hooks/useHorizontalScroll";
 import { EmailRegex } from "Const";
 import { getNip05PubKey } from "Pages/LoginPage";
-import { LNURL } from "LNURL";
 import useLogin from "Hooks/useLogin";
 
 import messages from "./messages";
@@ -157,7 +157,7 @@ export default function ProfilePage() {
         setId(a);
       });
     } else {
-      const nav = parseNostrLink(params.id ?? "");
+      const nav = tryParseNostrLink(params.id ?? "");
       if (nav?.type === NostrPrefix.PublicKey || nav?.type === NostrPrefix.Profile) {
         // todo: use relays if any for nprofile
         setId(nav.id);

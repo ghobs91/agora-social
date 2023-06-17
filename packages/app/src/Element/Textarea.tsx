@@ -4,13 +4,12 @@ import "./Textarea.css";
 import { useIntl } from "react-intl";
 import ReactTextareaAutocomplete from "@webscopeio/react-textarea-autocomplete";
 import TextareaAutosize from "react-textarea-autosize";
-import { NostrPrefix } from "@snort/nostr";
+import { NostrPrefix, MetadataCache } from "@snort/system";
 
 import Avatar from "Element/Avatar";
 import Nip05 from "Element/Nip05";
-import { hexToBech32 } from "Util";
-import { MetadataCache } from "Cache";
-import { UserCache } from "Cache/UserCache";
+import { hexToBech32 } from "SnortUtils";
+import { UserCache } from "Cache";
 
 import messages from "./messages";
 

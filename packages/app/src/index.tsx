@@ -9,7 +9,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
 import * as serviceWorkerRegistration from "serviceWorkerRegistration";
 import { IntlProvider } from "IntlProvider";
-import { unwrap } from "Util";
+import { unwrap } from "SnortUtils";
 import Store from "State/Store";
 import Layout from "Pages/Layout";
 import LoginPage from "Pages/LoginPage";
@@ -31,8 +31,33 @@ import NostrLinkHandler from "Pages/NostrLinkHandler";
 import Thread from "Element/Thread";
 import { SubscribeRoutes } from "Pages/subscribe";
 import ZapPoolPage from "Pages/ZapPool";
+import DebugPage from "Pages/Debug";
+import { db } from "Db";
+import { preload, UserCache } from "Cache";
+import { LoginStore } from "Login";
+import { EventPublisher, NostrSystem, ProfileLoaderService } from "@snort/system";
+import { UserRelays } from "Cache";
 
-// @ts-ignore
+/**
+ * Singleton nostr system
+ */
+export const System = new NostrSystem({
+  relayCache: UserRelays,
+  authHandler: async (c, r) => {
+    const { publicKey, privateKey } = LoginStore.snapshot();
+    if (publicKey) {
+      const pub = new EventPublisher(publicKey, privateKey);
+      return await pub.nip42Auth(c, r);
+    }
+  },
+});
+
+/**
+ * Singleton user profile loader
+ */
+export const ProfileLoader = new ProfileLoaderService(System, UserCache);
+
+// @ts-expect-error Setting webpack nonce
 window.__webpack_nonce__ = "ZmlhdGphZiBzYWlkIHNub3J0LnNvY2lhbCBpcyBwcmV0dHkgZ29vZCwgd2UgbWFkZSBpdCE=";
 
 serviceWorkerRegistration.register();
@@ -41,6 +66,29 @@ export const router = createBrowserRouter([
   {
     element: <Layout />,
     errorElement: <ErrorPage />,
+    loader: async () => {
+      const login = LoginStore.takeSnapshot();
+      db.ready = await db.isAvailable();
+      if (db.ready) {
+        await preload(login.follows.item);
+      }
+
+      for (const [k, v] of Object.entries(login.relays.item)) {
+        System.ConnectToRelay(k, v);
+      }
+      try {
+        if ("registerProtocolHandler" in window.navigator) {
+          window.navigator.registerProtocolHandler(
+            "web+nostr",
+            `${window.location.protocol}//${window.location.host}/%s`
+          );
+          console.info("Registered protocol handler for 'web+nostr'");
+        }
+      } catch (e) {
+        console.error("Failed to register protocol handler", e);
+      }
+      return null;
+    },
     children: [
       ...RootRoutes,
       {
@@ -99,6 +147,10 @@ export const router = createBrowserRouter([
       ...NewUserRoutes,
       ...WalletRoutes,
       ...SubscribeRoutes,
+      {
+        path: "/debug",
+        element: <DebugPage />,
+      },
       {
         path: "/*",
         element: <NostrLinkHandler />,

@@ -1,12 +1,11 @@
 import * as secp from "@noble/curves/secp256k1";
 import * as utils from "@noble/curves/abstract/utils";
 
-import { HexKey, RelaySettings } from "@snort/nostr";
+import { HexKey, RelaySettings } from "@snort/system";
+import { deepClone, sanitizeRelayUrl, unwrap, ExternalStore } from "@snort/shared";
 
 import { DefaultRelays } from "Const";
-import ExternalStore from "ExternalStore";
 import { LoginSession } from "Login";
-import { deepClone, sanitizeRelayUrl, unwrap } from "Util";
 import { DefaultPreferences, UserPreferences } from "./Preferences";
 
 const AccountStoreKey = "sessions";
@@ -195,6 +194,15 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     window.localStorage.removeItem(LegacyKeys.RelayListKey);
     window.localStorage.removeItem(LegacyKeys.FollowList);
     window.localStorage.removeItem(LegacyKeys.NotificationsReadItem);
+
+    // replace default tab with notes
+    for (const [, v] of this.#accounts) {
+      if ((v.preferences.defaultRootTab as string) === "posts") {
+        v.preferences.defaultRootTab = "notes";
+        didMigrate = true;
+      }
+    }
+
     if (didMigrate) {
       console.debug("Finished migration to MultiAccountStore");
       this.#save();

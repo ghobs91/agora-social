@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { useIntl, FormattedMessage } from "react-intl";
 import { useNavigate } from "react-router-dom";
+import { mapEventToProfile } from "@snort/system";
 
 import Logo from "Element/Logo";
 import useEventPublisher from "Feed/EventPublisher";
 import useLogin from "Hooks/useLogin";
 import { useUserProfile } from "Hooks/useUserProfile";
-import { mapEventToProfile, UserCache } from "Cache";
+import { UserCache } from "Cache";
 import AvatarEditor from "Element/AvatarEditor";
+import { DISCOVER } from ".";
+import { System } from "index";
 
 import messages from "./messages";
-import { DISCOVER } from ".";
 
 export default function ProfileSetup() {
   const login = useLogin();
@@ -35,7 +37,7 @@ export default function ProfileSetup() {
         name: username,
         picture,
       });
-      publisher.broadcast(ev);
+      System.BroadcastEvent(ev);
       const profile = mapEventToProfile(ev);
       if (profile) {
         UserCache.set(profile);

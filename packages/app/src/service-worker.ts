@@ -1,20 +1,18 @@
 /// <reference lib="webworker" />
 import {} from ".";
-declare var self: ServiceWorkerGlobalScope;
+declare const self: ServiceWorkerGlobalScope;
 
 import { clientsClaim } from "workbox-core";
-import { ExpirationPlugin } from "workbox-expiration";
 import { registerRoute } from "workbox-routing";
-import { StaleWhileRevalidate, CacheFirst } from "workbox-strategies";
+import { CacheFirst } from "workbox-strategies";
 
 clientsClaim();
 
-const staticTypes = ["image", "video", "audio"];
+const staticTypes = ["image", "video", "audio", "script", "style", "font"];
 registerRoute(
   ({ request, url }) => url.origin === self.location.origin && staticTypes.includes(request.destination),
-  new StaleWhileRevalidate({
+  new CacheFirst({
     cacheName: "static-content",
-    plugins: [new ExpirationPlugin({ maxEntries: 50 })],
   })
 );
 

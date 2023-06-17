@@ -1,11 +1,12 @@
 import "./FollowButton.css";
 import { FormattedMessage } from "react-intl";
-import { HexKey } from "@snort/nostr";
+import { HexKey } from "@snort/system";
 
 import useEventPublisher from "Feed/EventPublisher";
-import { parseId } from "Util";
+import { parseId } from "SnortUtils";
 import useLogin from "Hooks/useLogin";
 import AsyncButton from "Element/AsyncButton";
+import { System } from "index";
 
 import messages from "./messages";
 
@@ -23,7 +24,7 @@ export default function FollowButton(props: FollowButtonProps) {
   async function follow(pubkey: HexKey) {
     if (publisher) {
       const ev = await publisher.contactList([pubkey, ...follows.item], relays.item);
-      publisher.broadcast(ev);
+      System.BroadcastEvent(ev);
     }
   }
 
@@ -33,7 +34,7 @@ export default function FollowButton(props: FollowButtonProps) {
         follows.item.filter(a => a !== pubkey),
         relays.item
       );
-      publisher.broadcast(ev);
+      System.BroadcastEvent(ev);
     }
   }
 
