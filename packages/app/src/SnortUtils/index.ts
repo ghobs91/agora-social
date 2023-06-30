@@ -3,7 +3,6 @@ import * as utils from "@noble/curves/abstract/utils";
 import { sha256 as hash } from "@noble/hashes/sha256";
 import { hmac } from "@noble/hashes/hmac";
 import { bytesToHex } from "@noble/hashes/utils";
-import { decode as invoiceDecode } from "light-bolt11-decoder";
 import { bech32, base32hex } from "@scure/base";
 import {
   HexKey,
@@ -99,7 +98,7 @@ export function eventLink(hex: u256, relays?: Array<string> | string) {
  */
 export function profileLink(hex: HexKey, relays?: Array<string> | string) {
   const encoded = relays
-    ? encodeTLV(NostrPrefix.Event, hex, Array.isArray(relays) ? relays : [relays])
+    ? encodeTLV(NostrPrefix.Profile, hex, Array.isArray(relays) ? relays : [relays])
     : hexToBech32(NostrPrefix.PublicKey, hex);
   return `/p/${encoded}`;
 }
@@ -108,7 +107,7 @@ export function profileLink(hex: HexKey, relays?: Array<string> | string) {
  * Convert hex to bech32
  */
 export function hexToBech32(hrp: string, hex?: string) {
-  if (typeof hex !== "string" || hex.length === 0 || hex.length % 2 !== 0) {
+  if (typeof hex !== "string" || hex.length === 0 || hex.length % 2 !== 0 || !isHex(hex)) {
     return "";
   }
 
@@ -174,6 +173,14 @@ export function deepClone<T>(obj: T) {
   }
 }
 
+export function isHex(s: string) {
+  // 48-57 = 0-9
+  // 65-90 = A-Z
+  // 97-122 = a-z
+  return [...s]
+    .map(v => v.charCodeAt(0))
+    .every(v => (v >= 48 && v <= 57) || (v >= 65 && v <= 90) || v >= 97 || v <= 122);
+}
 /**
  * Simple debounce
  */
@@ -315,51 +322,6 @@ export const delay = (t: number) => {
     setTimeout(resolve, t);
   });
 };
-
-export interface InvoiceDetails {
-  amount?: number;
-  expire?: number;
-  timestamp?: number;
-  description?: string;
-  descriptionHash?: string;
-  paymentHash?: string;
-  expired: boolean;
-  pr: string;
-}
-
-export function decodeInvoice(pr: string): InvoiceDetails | undefined {
-  try {
-    const parsed = invoiceDecode(pr);
-
-    const amountSection = parsed.sections.find(a => a.name === "amount");
-    const amount = amountSection ? Number(amountSection.value as number | string) : undefined;
-
-    const timestampSection = parsed.sections.find(a => a.name === "timestamp");
-    const timestamp = timestampSection ? Number(timestampSection.value as number | string) : undefined;
-
-    const expirySection = parsed.sections.find(a => a.name === "expiry");
-    const expire = expirySection ? Number(expirySection.value as number | string) : undefined;
-    const descriptionSection = parsed.sections.find(a => a.name === "description")?.value;
-    const descriptionHashSection = parsed.sections.find(a => a.name === "description_hash")?.value;
-    const paymentHashSection = parsed.sections.find(a => a.name === "payment_hash")?.value;
-    const ret = {
-      pr,
-      amount: amount,
-      expire: timestamp && expire ? timestamp + expire : undefined,
-      timestamp: timestamp,
-      description: descriptionSection as string | undefined,
-      descriptionHash: descriptionHashSection ? bytesToHex(descriptionHashSection as Uint8Array) : undefined,
-      paymentHash: paymentHashSection ? bytesToHex(paymentHashSection as Uint8Array) : undefined,
-      expired: false,
-    };
-    if (ret.expire) {
-      ret.expired = ret.expire < new Date().getTime() / 1000;
-    }
-    return ret;
-  } catch (e) {
-    console.error(e);
-  }
-}
 
 export interface Magnet {
   dn?: string | string[];

@@ -6,6 +6,7 @@ import { StrictMode } from "react";
 import * as ReactDOM from "react-dom/client";
 import { Provider } from "react-redux";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { EventPublisher, NostrSystem, ProfileLoaderService } from "@snort/system";
 
 import * as serviceWorkerRegistration from "serviceWorkerRegistration";
 import { IntlProvider } from "IntlProvider";
@@ -20,7 +21,6 @@ import SettingsPage, { SettingsRoutes } from "Pages/SettingsPage";
 import ErrorPage from "Pages/ErrorPage";
 import VerificationPage from "Pages/Verification";
 import MessagesPage from "Pages/MessagesPage";
-import ChatPage from "Pages/ChatPage";
 import DonatePage from "Pages/DonatePage";
 import HashTagsPage from "Pages/HashTagsPage";
 import SearchPage from "Pages/SearchPage";
@@ -33,16 +33,17 @@ import { SubscribeRoutes } from "Pages/subscribe";
 import ZapPoolPage from "Pages/ZapPool";
 import DebugPage from "Pages/Debug";
 import { db } from "Db";
-import { preload, UserCache } from "Cache";
+import { preload, RelayMetrics, UserCache, UserRelays } from "Cache";
 import { LoginStore } from "Login";
-import { EventPublisher, NostrSystem, ProfileLoaderService } from "@snort/system";
-import { UserRelays } from "Cache";
+import { LivePage } from "Pages/LivePage";
 
 /**
  * Singleton nostr system
  */
 export const System = new NostrSystem({
   relayCache: UserRelays,
+  profileCache: UserCache,
+  relayMetrics: RelayMetrics,
   authHandler: async (c, r) => {
     const { publicKey, privateKey } = LoginStore.snapshot();
     if (publicKey) {
@@ -121,12 +122,8 @@ export const router = createBrowserRouter([
         element: <VerificationPage />,
       },
       {
-        path: "/messages",
+        path: "/messages/:id?",
         element: <MessagesPage />,
-      },
-      {
-        path: "/messages/:id",
-        element: <ChatPage />,
       },
       {
         path: "/donate",
@@ -143,6 +140,10 @@ export const router = createBrowserRouter([
       {
         path: "/zap-pool",
         element: <ZapPoolPage />,
+      },
+      {
+        path: "/live/:id",
+        element: <LivePage />,
       },
       ...NewUserRoutes,
       ...WalletRoutes,

@@ -3,12 +3,11 @@ import React, { useMemo, useState, useLayoutEffect, ReactNode } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useInView } from "react-intersection-observer";
 import { useIntl, FormattedMessage } from "react-intl";
-import { TaggedRawEvent, HexKey, EventKind, NostrPrefix, Lists, EventExt } from "@snort/system";
+import { TaggedRawEvent, HexKey, EventKind, NostrPrefix, Lists, EventExt, parseZap } from "@snort/system";
 
 import { System } from "index";
 import useEventPublisher from "Feed/EventPublisher";
 import Icon from "Icons/Icon";
-import { parseZap } from "Element/Zap";
 import ProfileImage from "Element/ProfileImage";
 import Text from "Element/Text";
 import {
@@ -32,6 +31,7 @@ import { setBookmarked, setPinned } from "Login";
 import { NostrFileElement } from "Element/NostrFileHeader";
 import ZapstrEmbed from "Element/ZapstrEmbed";
 import PubkeyList from "Element/PubkeyList";
+import { LiveEvent } from "Element/LiveEvent";
 
 import messages from "./messages";
 
@@ -86,6 +86,9 @@ export default function Note(props: NoteProps) {
   if (ev.kind === EventKind.PubkeyLists) {
     return <PubkeyList ev={ev} className={className} />;
   }
+  if (ev.kind === EventKind.LiveEvent) {
+    return <LiveEvent ev={ev} />;
+  }
 
   const baseClassName = `note card${className ? ` ${className}` : ""}`;
   const navigate = useNavigate();
@@ -131,7 +134,7 @@ export default function Note(props: NoteProps) {
   );
   const zaps = useMemo(() => {
     const sortedZaps = getReactions(related, ev.id, EventKind.ZapReceipt)
-      .map(a => parseZap(a, ev))
+      .map(a => parseZap(a, UserCache, ev))
       .filter(z => z.valid);
     sortedZaps.sort((a, b) => b.amount - a.amount);
     return sortedZaps;

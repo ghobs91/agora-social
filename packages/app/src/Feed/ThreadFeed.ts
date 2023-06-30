@@ -1,22 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { u256, EventKind, NostrLink, FlatNoteStore, RequestBuilder } from "@snort/system";
+import { u256, EventKind, NostrLink, FlatNoteStore, RequestBuilder, NostrPrefix } from "@snort/system";
+import { useRequestBuilder } from "@snort/system-react";
 
 import { appendDedupe } from "SnortUtils";
-import useRequestBuilder from "Hooks/useRequestBuilder";
 import useLogin from "Hooks/useLogin";
+import { System } from "index";
 
 interface RelayTaggedEventId {
   id: u256;
   relay?: string;
 }
 export default function useThreadFeed(link: NostrLink) {
-  const linkTagged = {
-    id: link.id,
-    relay: link.relays?.[0],
-  };
-  const [trackingEvents, setTrackingEvent] = useState<Array<RelayTaggedEventId>>([linkTagged]);
+  const [trackingEvents, setTrackingEvent] = useState<Array<RelayTaggedEventId>>([]);
   const [trackingATags, setTrackingATags] = useState<string[]>([]);
-  const [allEvents, setAllEvents] = useState<Array<RelayTaggedEventId>>([linkTagged]);
+  const [allEvents, setAllEvents] = useState<Array<RelayTaggedEventId>>([]);
   const pref = useLogin().preferences;
 
   const sub = useMemo(() => {
@@ -24,22 +21,28 @@ export default function useThreadFeed(link: NostrLink) {
     sub.withOptions({
       leaveOpen: true,
     });
-    const fTracking = sub.withFilter();
-    for (const te of trackingEvents) {
-      fTracking.id(te.id, te.relay);
+    if (trackingEvents.length > 0) {
+      for (const te of trackingEvents) {
+        const fTracking = sub.withFilter();
+        fTracking.ids([te.id]);
+        if (te.relay) {
+          fTracking.relay(te.relay);
+        }
+      }
     }
-    sub
-      .withFilter()
-      .kinds(
-        pref.enableReactions
-          ? [EventKind.Reaction, EventKind.TextNote, EventKind.Repost, EventKind.ZapReceipt]
-          : [EventKind.TextNote, EventKind.ZapReceipt, EventKind.Repost]
-      )
-      .tag(
-        "e",
-        allEvents.map(a => a.id)
-      );
-
+    if (allEvents.length > 0) {
+      sub
+        .withFilter()
+        .kinds(
+          pref.enableReactions
+            ? [EventKind.Reaction, EventKind.TextNote, EventKind.Repost, EventKind.ZapReceipt]
+            : [EventKind.TextNote, EventKind.ZapReceipt, EventKind.Repost]
+        )
+        .tag(
+          "e",
+          allEvents.map(a => a.id)
+        );
+    }
     if (trackingATags.length > 0) {
       const parsed = trackingATags.map(a => a.split(":"));
       sub
@@ -50,16 +53,24 @@ export default function useThreadFeed(link: NostrLink) {
           "d",
           parsed.map(a => a[2])
         );
+      sub.withFilter().tag("a", trackingATags);
     }
     return sub;
   }, [trackingEvents, trackingATags, allEvents, pref]);
 
-  const store = useRequestBuilder<FlatNoteStore>(FlatNoteStore, sub);
+  const store = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, sub);
 
   useEffect(() => {
-    setTrackingATags([]);
-    setTrackingEvent([linkTagged]);
-    setAllEvents([linkTagged]);
+    if (link.type === NostrPrefix.Address) {
+      setTrackingATags([`${link.kind}:${link.author}:${link.id}`]);
+    } else {
+      const lnk = {
+        id: link.id,
+        relay: link.relays?.[0],
+      };
+      setTrackingEvent([lnk]);
+      setAllEvents([lnk]);
+    }
   }, [link.id]);
 
   useEffect(() => {

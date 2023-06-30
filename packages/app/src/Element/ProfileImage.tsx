@@ -1,13 +1,14 @@
 import "./ProfileImage.css";
 
 import React, { useMemo } from "react";
-import { HexKey, NostrPrefix, MetadataCache } from "@snort/system";
+import { Link } from "react-router-dom";
+import { HexKey, NostrPrefix, UserMetadata } from "@snort/system";
+import { useUserProfile } from "@snort/system-react";
 
-import { useUserProfile } from "Hooks/useUserProfile";
 import { hexToBech32, profileLink } from "SnortUtils";
 import Avatar from "Element/Avatar";
 import Nip05 from "Element/Nip05";
-import { Link } from "react-router-dom";
+import { System } from "index";
 
 export interface ProfileImageProps {
   pubkey: HexKey;
@@ -18,6 +19,7 @@ export interface ProfileImageProps {
   defaultNip?: string;
   verifyNip?: boolean;
   overrideUsername?: string;
+  profile?: UserMetadata;
 }
 
 export default function ProfileImage({
@@ -29,8 +31,9 @@ export default function ProfileImage({
   defaultNip,
   verifyNip,
   overrideUsername,
+  profile,
 }: ProfileImageProps) {
-  const user = useUserProfile(pubkey);
+  const user = profile ?? useUserProfile(System, pubkey);
   const nip05 = defaultNip ? defaultNip : user?.nip05;
 
   const name = useMemo(() => {
@@ -65,7 +68,7 @@ export default function ProfileImage({
   );
 }
 
-export function getDisplayName(user: MetadataCache | undefined, pubkey: HexKey) {
+export function getDisplayName(user: UserMetadata | undefined, pubkey: HexKey) {
   let name = hexToBech32(NostrPrefix.PublicKey, pubkey).substring(0, 12);
   if (typeof user?.display_name === "string" && user.display_name.length > 0) {
     name = user.display_name;

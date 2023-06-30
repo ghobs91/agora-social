@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FormattedMessage } from "react-intl";
+import { useUserProfile } from "@snort/system-react";
 
 import messages from "./messages";
 
@@ -11,14 +12,11 @@ import { RootState } from "State/Store";
 import { setShow, reset } from "State/NoteCreator";
 import { System } from "index";
 import useLoginFeed from "Feed/LoginFeed";
-import { totalUnread } from "Pages/MessagesPage";
 import useModeration from "Hooks/useModeration";
 import { NoteCreator } from "Element/NoteCreator";
-import { useDmCache } from "Hooks/useDmsCache";
 import { mapPlanName } from "./subscribe";
 import useLogin from "Hooks/useLogin";
 import Avatar from "Element/Avatar";
-import { useUserProfile } from "Hooks/useUserProfile";
 import { profileLink } from "SnortUtils";
 import { getCurrentSubscription } from "Subscription";
 import Toaster from "Toaster";
@@ -43,7 +41,7 @@ export default function Layout() {
   };
 
   const shouldHideNoteCreator = useMemo(() => {
-    const hideOn = ["/settings", "/messages", "/new", "/login", "/donate", "/p/", "/e", "/subscribe"];
+    const hideOn = ["/settings", "/messages", "/new", "/login", "/donate", "/p/", "/e", "/subscribe", "/live"];
     return isReplyNoteCreatorShowing || hideOn.some(a => location.pathname.startsWith(a));
   }, [location, isReplyNoteCreatorShowing]);
 
@@ -53,9 +51,10 @@ export default function Layout() {
   }, [location]);
 
   useEffect(() => {
-    const widePage = ["/login", "/messages"];
+    const widePage = ["/login", "/messages", "/live"];
+    const noScroll = ["/messages", "/live"];
     if (widePage.some(a => location.pathname.startsWith(a))) {
-      setPageClass("");
+      setPageClass(noScroll.some(a => location.pathname.startsWith(a)) ? "scroll-lock" : "");
     } else {
       setPageClass("page");
     }
@@ -144,25 +143,14 @@ export default function Layout() {
 const AccountHeader = () => {
   const navigate = useNavigate();
 
-  const { isMuted } = useModeration();
   const { publicKey, latestNotification, readNotifications } = useLogin();
-  const dms = useDmCache();
-  const profile = useUserProfile(publicKey);
+  const profile = useUserProfile(System, publicKey);
 
   const hasNotifications = useMemo(
     () => latestNotification > readNotifications,
     [latestNotification, readNotifications]
   );
-  const unreadDms = useMemo(
-    () =>
-      publicKey
-        ? totalUnread(
-            dms.filter(a => !isMuted(a.pubkey)),
-            publicKey
-          )
-        : 0,
-    [dms, publicKey]
-  );
+  const unreadDms = useMemo(() => (publicKey ? 0 : 0), [publicKey]);
 
   async function goToNotifications(e: React.MouseEvent) {
     e.stopPropagation();

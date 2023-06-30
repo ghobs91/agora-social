@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { EventKind, u256, FlatNoteStore, RequestBuilder } from "@snort/system";
+import { useRequestBuilder } from "@snort/system-react";
 
 import { unixNow, unwrap, tagFilterOfTextRepost } from "SnortUtils";
-import useRequestBuilder from "Hooks/useRequestBuilder";
 import useTimelineWindow from "Hooks/useTimelineWindow";
 import useLogin from "Hooks/useLogin";
+import { System } from "index";
+import { SearchRelays } from "Const";
 
 export interface TimelineFeedOptions {
   method: "TIME_RANGE" | "LIMIT_UNTIL";
   window?: number;
-  relay?: string;
   now?: number;
 }
 
@@ -17,6 +18,7 @@ export interface TimelineSubject {
   type: "pubkey" | "hashtag" | "global" | "ptag" | "post_keyword" | "profile_keyword";
   discriminator: string;
   items: string[];
+  relay?: string;
 }
 
 export type TimelineFeed = ReturnType<typeof useTimelineFeed>;
@@ -42,11 +44,8 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
           : [EventKind.TextNote, EventKind.Repost, EventKind.Polls]
       );
 
-    if (options.relay) {
-      b.withOptions({
-        leaveOpen: false,
-        relays: [options.relay],
-      });
+    if (subject.relay) {
+      f.relay(subject.relay);
     }
     switch (subject.type) {
       case "pubkey": {
@@ -63,10 +62,12 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
       }
       case "profile_keyword": {
         f.search(subject.items[0] + " sort:popular");
+        SearchRelays.forEach(r => f.relay(r));
         break;
       }
       case "post_keyword": {
         f.search(subject.items[0]);
+        SearchRelays.forEach(r => f.relay(r));
         break;
       }
     }
@@ -108,7 +109,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     return rb?.builder ?? null;
   }, [until, since, options.method, pref, createBuilder]);
 
-  const main = useRequestBuilder<FlatNoteStore>(FlatNoteStore, sub);
+  const main = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, sub);
 
   const subRealtime = useMemo(() => {
     const rb = createBuilder();
@@ -122,13 +123,13 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     return rb?.builder ?? null;
   }, [pref.autoShowLatest, createBuilder]);
 
-  const latest = useRequestBuilder<FlatNoteStore>(FlatNoteStore, subRealtime);
+  const latest = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, subRealtime);
 
   useEffect(() => {
     // clear store if changing relays
     main.clear();
     latest.clear();
-  }, [options.relay]);
+  }, [subject.relay]);
 
   function getParentEvents() {
     if (main.data) {
@@ -168,7 +169,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     return rb.numFilters > 0 ? rb : null;
   }, [main.data, pref, subject.type]);
 
-  const related = useRequestBuilder<FlatNoteStore>(FlatNoteStore, subNext);
+  const related = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, subNext);
 
   return {
     main: main.data,

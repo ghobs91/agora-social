@@ -1,22 +1,23 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
-import { useNavigate } from "react-router-dom";
-import { HexKey, NostrEvent, NostrPrefix } from "@snort/system";
+import { useNavigate, useParams } from "react-router-dom";
+import { NostrPrefix } from "@snort/system";
+import { useUserProfile } from "@snort/system-react";
 
 import UnreadCount from "Element/UnreadCount";
 import ProfileImage, { getDisplayName } from "Element/ProfileImage";
-import { dedupe, hexToBech32, unwrap } from "SnortUtils";
+import { hexToBech32, parseId } from "SnortUtils";
 import NoteToSelf from "Element/NoteToSelf";
 import useModeration from "Hooks/useModeration";
-import { useDmCache } from "Hooks/useDmsCache";
 import useLogin from "Hooks/useLogin";
 import usePageWidth from "Hooks/usePageWidth";
 import NoteTime from "Element/NoteTime";
 import DmWindow from "Element/DmWindow";
 import Avatar from "Element/Avatar";
-import { useUserProfile } from "Hooks/useUserProfile";
 import Icon from "Icons/Icon";
 import Text from "Element/Text";
+import { System } from "index";
+import { Chat, ChatType, useChatSystem } from "chat";
 
 import "./MessagesPage.css";
 import messages from "./messages";
@@ -24,98 +25,84 @@ import messages from "./messages";
 const TwoCol = 768;
 const ThreeCol = 1500;
 
-type DmChat = {
-  pubkey: HexKey;
-  unreadMessages: number;
-  newestMessage: number;
-};
-
 export default function MessagesPage() {
   const login = useLogin();
-  const { isMuted } = useModeration();
   const { formatMessage } = useIntl();
   const navigate = useNavigate();
-  const dms = useDmCache();
+  const { id } = useParams();
   const [chat, setChat] = useState<string>();
   const pageWidth = usePageWidth();
 
-  const chats = useMemo(() => {
-    if (login.publicKey) {
-      return extractChats(
-        dms.filter(a => !isMuted(a.pubkey)),
-        login.publicKey
-      );
-    }
-    return [];
-  }, [dms, login.publicKey, isMuted]);
+  useEffect(() => {
+    const parsedId = parseId(id ?? "");
+    setChat(id ? parsedId : undefined);
+  }, [id]);
+  const chats = useChatSystem();
 
-  const unreadCount = useMemo(() => chats.reduce((p, c) => p + c.unreadMessages, 0), [chats]);
+  const unreadCount = useMemo(() => chats.reduce((p, c) => p + c.unread, 0), [chats]);
 
-  function openChat(e: React.MouseEvent<HTMLDivElement>, pubkey: string) {
+  function openChat(e: React.MouseEvent<HTMLDivElement>, type: ChatType, id: string) {
     e.stopPropagation();
     e.preventDefault();
-    if (pageWidth < TwoCol) {
-      navigate(`/messages/${hexToBech32(NostrPrefix.PublicKey, pubkey)}`);
+    if (type === ChatType.DirectMessage) {
+      navigate(`/messages/${hexToBech32(NostrPrefix.PublicKey, id)}`, {
+        replace: true,
+      });
     } else {
-      setChat(pubkey);
+      navigate(`/messages/${encodeURIComponent(id)}`, {
+        replace: true,
+      });
     }
   }
 
-  function noteToSelf(chat: DmChat) {
+  function noteToSelf(chat: Chat) {
     return (
-      <div className="flex mb10" key={chat.pubkey} onClick={e => openChat(e, chat.pubkey)}>
-        <NoteToSelf clickable={true} className="f-grow" link="" pubkey={chat.pubkey} />
+      <div className="flex mb10" key={chat.id} onClick={e => openChat(e, chat.type, chat.id)}>
+        <NoteToSelf clickable={true} className="f-grow" link="" pubkey={chat.id} />
       </div>
     );
   }
 
-  function person(chat: DmChat) {
+  function person(chat: Chat) {
     if (!login.publicKey) return null;
-    if (chat.pubkey === login.publicKey) return noteToSelf(chat);
+    if (chat.id === login.publicKey) return noteToSelf(chat);
     return (
-      <div className="flex mb10" key={chat.pubkey} onClick={e => openChat(e, chat.pubkey)}>
-        <ProfileImage pubkey={chat.pubkey} className="f-grow" link="" />
+      <div className="flex mb10" key={chat.id} onClick={e => openChat(e, chat.type, chat.id)}>
+        {chat.type === ChatType.DirectMessage ? (
+          <ProfileImage pubkey={chat.id} className="f-grow" link="" />
+        ) : (
+          <ProfileImage pubkey={chat.id} overrideUsername={chat.id} className="f-grow" link="" />
+        )}
         <div className="nowrap">
           <small>
-            <NoteTime
-              from={newestMessage(dms, login.publicKey, chat.pubkey) * 1000}
-              fallback={formatMessage({ defaultMessage: "Just now" })}
-            />
+            <NoteTime from={chat.lastMessage * 1000} fallback={formatMessage({ defaultMessage: "Just now" })} />
           </small>
-          {chat.unreadMessages > 0 && <UnreadCount unread={chat.unreadMessages} />}
+          {chat.unread > 0 && <UnreadCount unread={chat.unread} />}
         </div>
       </div>
     );
-  }
-
-  function markAllRead() {
-    for (const c of chats) {
-      setLastReadDm(c.pubkey);
-    }
   }
 
   return (
     <div className="dm-page">
-      <div>
-        <div className="flex">
-          <h3 className="f-grow">
-            <FormattedMessage {...messages.Messages} />
-          </h3>
-          <button disabled={unreadCount <= 0} type="button" onClick={() => markAllRead()}>
-            <FormattedMessage {...messages.MarkAllRead} />
-          </button>
+      {(pageWidth >= TwoCol || !chat) && (
+        <div>
+          <div className="flex">
+            <h3 className="f-grow">
+              <FormattedMessage {...messages.Messages} />
+            </h3>
+            <button disabled={unreadCount <= 0} type="button">
+              <FormattedMessage {...messages.MarkAllRead} />
+            </button>
+          </div>
+          {chats
+            .sort((a, b) => {
+              return a.id === login.publicKey ? -1 : b.id === login.publicKey ? 1 : b.lastMessage - a.lastMessage;
+            })
+            .map(person)}
         </div>
-        {chats
-          .sort((a, b) => {
-            return a.pubkey === login.publicKey
-              ? -1
-              : b.pubkey === login.publicKey
-              ? 1
-              : b.newestMessage - a.newestMessage;
-          })
-          .map(person)}
-      </div>
-      {pageWidth >= TwoCol && chat && <DmWindow id={chat} />}
+      )}
+      {chat && <DmWindow id={chat} />}
       {pageWidth >= ThreeCol && chat && (
         <div>
           <ProfileDmActions pubkey={chat} />
@@ -126,8 +113,15 @@ export default function MessagesPage() {
 }
 
 function ProfileDmActions({ pubkey }: { pubkey: string }) {
-  const profile = useUserProfile(pubkey);
+  const profile = useUserProfile(System, pubkey);
   const { block, unblock, isBlocked } = useModeration();
+
+  function truncAbout(s?: string) {
+    if ((s?.length ?? 0) > 200) {
+      return `${s?.slice(0, 200)}...`;
+    }
+    return s;
+  }
 
   const blocked = isBlocked(pubkey);
   return (
@@ -135,7 +129,7 @@ function ProfileDmActions({ pubkey }: { pubkey: string }) {
       <Avatar user={profile} size={210} />
       <h2>{getDisplayName(profile, pubkey)}</h2>
       <p>
-        <Text content={profile?.about ?? ""} tags={[]} creator={pubkey} disableMedia={true} depth={0} />
+        <Text content={truncAbout(profile?.about) ?? ""} tags={[]} creator={pubkey} disableMedia={true} depth={0} />
       </p>
 
       <div className="settings-row" onClick={() => (blocked ? unblock(pubkey) : block(pubkey))}>
@@ -144,71 +138,4 @@ function ProfileDmActions({ pubkey }: { pubkey: string }) {
       </div>
     </>
   );
-}
-
-export function lastReadDm(pk: HexKey) {
-  const k = `dm:seen:${pk}`;
-  return parseInt(window.localStorage.getItem(k) ?? "0");
-}
-
-export function setLastReadDm(pk: HexKey) {
-  const now = Math.floor(new Date().getTime() / 1000);
-  const current = lastReadDm(pk);
-  if (current >= now) {
-    return;
-  }
-
-  const k = `dm:seen:${pk}`;
-  window.localStorage.setItem(k, now.toString());
-}
-
-export function dmTo(e: NostrEvent) {
-  const firstP = e.tags.find(b => b[0] === "p");
-  return unwrap(firstP?.[1]);
-}
-
-export function isToSelf(e: Readonly<NostrEvent>, pk: HexKey) {
-  return e.pubkey === pk && dmTo(e) === pk;
-}
-
-export function dmsInChat(dms: readonly NostrEvent[], pk: HexKey) {
-  return dms.filter(a => a.pubkey === pk || dmTo(a) === pk);
-}
-
-export function totalUnread(dms: NostrEvent[], myPubKey: HexKey) {
-  return extractChats(dms, myPubKey).reduce((acc, v) => (acc += v.unreadMessages), 0);
-}
-
-function unreadDms(dms: NostrEvent[], myPubKey: HexKey, pk: HexKey) {
-  if (pk === myPubKey) return 0;
-  const lastRead = lastReadDm(pk);
-  return dmsInChat(dms, pk).filter(a => a.created_at >= lastRead && a.pubkey !== myPubKey).length;
-}
-
-function newestMessage(dms: readonly NostrEvent[], myPubKey: HexKey, pk: HexKey) {
-  if (pk === myPubKey) {
-    return dmsInChat(
-      dms.filter(d => isToSelf(d, myPubKey)),
-      pk
-    ).reduce((acc, v) => (acc = v.created_at > acc ? v.created_at : acc), 0);
-  }
-
-  return dmsInChat(dms, pk).reduce((acc, v) => (acc = v.created_at > acc ? v.created_at : acc), 0);
-}
-
-export function dmsForLogin(dms: readonly NostrEvent[], myPubKey: HexKey) {
-  return dms.filter(a => a.pubkey === myPubKey || (a.pubkey !== myPubKey && dmTo(a) === myPubKey));
-}
-
-export function extractChats(dms: NostrEvent[], myPubKey: HexKey) {
-  const myDms = dmsForLogin(dms, myPubKey);
-  const keys = myDms.map(a => [a.pubkey, dmTo(a)]).flat();
-  const filteredKeys = dedupe(keys);
-  return filteredKeys.map(a => {
-    return {
-      pubkey: a,
-      unreadMessages: unreadDms(myDms, myPubKey, a),
-      newestMessage: newestMessage(myDms, myPubKey, a),
-    } as DmChat;
-  });
 }

@@ -2,12 +2,11 @@ import "./Reactions.css";
 
 import { useState, useMemo, useEffect } from "react";
 import { useIntl, FormattedMessage } from "react-intl";
-import { TaggedRawEvent } from "@snort/system";
+import { TaggedRawEvent, ParsedZap } from "@snort/system";
 
 import { formatShort } from "Number";
 import Icon from "Icons/Icon";
 import { Tab } from "Element/Tabs";
-import { ParsedZap } from "Element/Zap";
 import ProfileImage from "Element/ProfileImage";
 import Tabs from "Element/Tabs";
 import Modal from "Element/Modal";
@@ -83,7 +82,7 @@ const Reactions = ({ show, setShow, positive, negative, reposts, zaps }: Reactio
         </h2>
       </div>
       <Tabs tabs={tabs} tab={tab} setTab={setTab} />
-      <div className="body" key={tab.value}>
+      <div className="reactions-body" key={tab.value}>
         {tab.value === 0 &&
           likes.map(ev => {
             return (

@@ -445,7 +445,7 @@ div.form-col {
   grid-template-columns: auto;
 }
 
-body.scroll-lock {
+.scroll-lock {
   overflow: hidden;
   height: 100vh;
 }
@@ -496,6 +496,14 @@ small.xs {
 
 .mr-auto {
   margin-right: auto;
+}
+
+.g5 {
+  gap: 5px;
+}
+
+.g10 {
+  gap: 10px;
 }
 
 .error {
