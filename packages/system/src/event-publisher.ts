@@ -1,6 +1,6 @@
 import * as secp from "@noble/curves/secp256k1";
 import * as utils from "@noble/curves/abstract/utils";
-import { unwrap, barrierQueue, processWorkQueue, WorkQueueItem, getPublicKey } from "@snort/shared";
+import { unwrap, getPublicKey } from "@snort/shared";
 
 import {
   EventKind,
@@ -18,58 +18,89 @@ import {
 import { EventBuilder } from "./event-builder";
 import { EventExt } from "./event-ext";
 import { findTag } from "./utils";
+import { Nip7Signer } from "./impl/nip7";
 
-const Nip7Queue: Array<WorkQueueItem> = [];
-processWorkQueue(Nip7Queue);
-export type EventBuilderHook = (ev: EventBuilder) => EventBuilder;
+type EventBuilderHook = (ev: EventBuilder) => EventBuilder;
 
-declare global {
-  interface Window {
-    nostr?: {
-      getPublicKey: () => Promise<HexKey>;
-      signEvent: <T extends NostrEvent>(event: T) => Promise<T>;
+export interface EventSigner {
+  init(): Promise<void>;
+  getPubKey(): Promise<string> | string;
+  nip4Encrypt(content: string, key: string): Promise<string>;
+  nip4Decrypt(content: string, otherKey: string): Promise<string>;
+  sign(ev: NostrEvent): Promise<NostrEvent>;
+}
 
-      getRelays?: () => Promise<Record<string, { read: boolean; write: boolean }>>;
+export class PrivateKeySigner implements EventSigner {
+  #publicKey: string;
+  #privateKey: string;
 
-      nip04?: {
-        encrypt?: (pubkey: HexKey, plaintext: string) => Promise<string>;
-        decrypt?: (pubkey: HexKey, ciphertext: string) => Promise<string>;
-      };
-    };
+  constructor(privateKey: string | Uint8Array) {
+    if (typeof privateKey === "string") {
+      this.#privateKey = privateKey;
+    } else {
+      this.#privateKey = utils.bytesToHex(privateKey);
+    }
+    this.#publicKey = getPublicKey(this.#privateKey);
+  }
+
+  get privateKey() {
+    return this.#privateKey;
+  }
+
+  init(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  getPubKey(): string {
+    return this.#publicKey;
+  }
+
+  async nip4Encrypt(content: string, key: string): Promise<string> {
+    return await EventExt.encryptDm(content, this.#privateKey, key);
+  }
+
+  async nip4Decrypt(content: string, otherKey: string): Promise<string> {
+    return await EventExt.decryptDm(content, this.#privateKey, otherKey);
+  }
+
+  sign(ev: NostrEvent): Promise<NostrEvent> {
+    EventExt.sign(ev, this.#privateKey);
+    return Promise.resolve(ev);
   }
 }
 
 export class EventPublisher {
   #pubKey: string;
-  #privateKey?: string;
+  #signer: EventSigner;
 
-  constructor(pubKey: string, privKey?: string) {
-    if (privKey) {
-      this.#privateKey = privKey;
-      this.#pubKey = utils.bytesToHex(secp.schnorr.getPublicKey(privKey));
-    } else {
-      this.#pubKey = pubKey;
+  constructor(signer: EventSigner, pubKey: string) {
+    this.#signer = signer;
+    this.#pubKey = pubKey;
+  }
+
+  /**
+   * Create a NIP-07 EventPublisher
+   */
+  static async nip7() {
+    if ("nostr" in window) {
+      const signer = new Nip7Signer();
+      const pubkey = await signer.getPubKey();
+      if (pubkey) {
+        return new EventPublisher(signer, pubkey);
+      }
     }
+  }
+
+  /**
+   * Create an EventPublisher for a private key
+   */
+  static privateKey(privateKey: string) {
+    const signer = new PrivateKeySigner(privateKey)
+    return new EventPublisher(signer, signer.getPubKey());
   }
 
   get pubKey() {
     return this.#pubKey;
-  }
-
-  get #hasNip07() {
-    return "nostr" in window;
-  }
-
-  /**
-   * Get a NIP-07 EventPublisher
-   */
-  static async nip7() {
-    if ("nostr" in window) {
-      const pubkey = await window.nostr?.getPublicKey();
-      if (pubkey) {
-        return new EventPublisher(pubkey);
-      }
-    }
   }
 
   #eb(k: EventKind) {
@@ -78,46 +109,16 @@ export class EventPublisher {
   }
 
   async #sign(eb: EventBuilder) {
-    if (this.#hasNip07 && !this.#privateKey) {
-      const nip7PubKey = await barrierQueue(Nip7Queue, () => unwrap(window.nostr).getPublicKey());
-      if (nip7PubKey !== this.#pubKey) {
-        throw new Error("Can't sign event, NIP-07 pubkey does not match");
-      }
-      const ev = eb.build();
-      return await barrierQueue(Nip7Queue, () => unwrap(window.nostr).signEvent(ev));
-    } else if (this.#privateKey) {
-      return await eb.buildAndSign(this.#privateKey);
-    } else {
-      throw new Error("Can't sign event, no private keys available");
-    }
+    const ev = eb.build();
+    return await this.#signer.sign(ev);
   }
 
-  async nip4Encrypt(content: string, key: HexKey) {
-    if (this.#hasNip07 && !this.#privateKey) {
-      const nip7PubKey = await barrierQueue(Nip7Queue, () => unwrap(window.nostr).getPublicKey());
-      if (nip7PubKey !== this.#pubKey) {
-        throw new Error("Can't encrypt content, NIP-07 pubkey does not match");
-      }
-      return await barrierQueue(Nip7Queue, () =>
-        unwrap(window.nostr?.nip04?.encrypt).call(window.nostr?.nip04, key, content)
-      );
-    } else if (this.#privateKey) {
-      return await EventExt.encryptDm(content, this.#privateKey, key);
-    } else {
-      throw new Error("Can't encrypt content, no private keys available");
-    }
+  async nip4Encrypt(content: string, otherKey: string) {
+    return await this.#signer.nip4Encrypt(content, otherKey);
   }
 
-  async nip4Decrypt(content: string, otherKey: HexKey) {
-    if (this.#hasNip07 && !this.#privateKey && window.nostr?.nip04?.decrypt) {
-      return await barrierQueue(Nip7Queue, () =>
-        unwrap(window.nostr?.nip04?.decrypt).call(window.nostr?.nip04, otherKey, content)
-      );
-    } else if (this.#privateKey) {
-      return await EventExt.decryptDm(content, this.#privateKey, otherKey);
-    } else {
-      throw new Error("Can't decrypt content, no private keys available");
-    }
+  async nip4Decrypt(content: string, otherKey: string) {
+    return await this.#signer.nip4Decrypt(content, otherKey);
   }
 
   async nip42Auth(challenge: string, relay: string) {
