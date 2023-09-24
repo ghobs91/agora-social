@@ -1,5 +1,62 @@
 import { NostrPrefix } from "../src/links";
 import { parseNostrLink, tryParseNostrLink } from "../src/nostr-link";
+import { splitByUrl } from "../src/utils";
+
+describe("splitByUrl", () => {
+  it("should split a string by URLs", () => {
+    const inputStr =
+      "@npub1q6mcr8t not https://example.com- sure what your stack is, https://example.com but I made a https://example.com! simple example (https://example.com) of how https://example.com/yo-yo https://example.example.com to do this https://example.com, https://example.com?q=asdf for Next.js apps hosted on Vercel https://example.com. Scarcity in money provides the incentive to create abundance in other things as there is a mechanism to reliably store value. https://i.imgur.com/rkqhjeq.png Every form of money that could be inflated by way of force or technological advancement has been. https://www.dw.com/de/amtsinhaber-mnangagwa-gewinnt-präsidentenwahl-in-simbabwe/a-66640006?maca=de-rss-de-all-1119-xml-atom and some shit.";
+    const expectedOutput = [
+      "@npub1q6mcr8t not ",
+      "https://example.com-",
+      " sure what your stack is, ",
+      "https://example.com",
+      " but I made a ",
+      "https://example.com",
+      "! simple example (",
+      "https://example.com)",
+      " of how ",
+      "https://example.com/yo-yo",
+      " ",
+      "https://example.example.com",
+      " to do this ",
+      "https://example.com",
+      ", ",
+      "https://example.com?q=asdf",
+      " for Next.js apps hosted on Vercel ",
+      "https://example.com",
+      ". Scarcity in money provides the incentive to create abundance in other things as there is a mechanism to reliably store value. ",
+      "https://i.imgur.com/rkqhjeq.png",
+      " Every form of money that could be inflated by way of force or technological advancement has been. ",
+      "https://www.dw.com/de/amtsinhaber-mnangagwa-gewinnt-präsidentenwahl-in-simbabwe/a-66640006?maca=de-rss-de-all-1119-xml-atom",
+      " and some shit.",
+    ];
+
+    expect(splitByUrl(inputStr)).toEqual(expectedOutput);
+  });
+
+  it("should parse nostr links", () => {
+    const input =
+      "web+nostr:npub1v0lxxxxutpvrelsksy8cdhgfux9l6a42hsj2qzquu2zk7vc9qnkszrqj49\nnostr:note1jp6d36lmquhxqn2s5n4ce00pzu2jrpkek8udav6l0y3qcdngpnxsle6ngm\nnostr:naddr1qqv8x6r0wf6x2um594cxzarg946x7ttpwajhxmmdv5pzqx78pgq53vlnzmdr8l3u38eru0n3438lnxqz0mr39wg9e5j0dfq3qvzqqqr4gu5d05rr\nnostr is cool";
+    const expected = [
+      "",
+      "web+nostr:npub1v0lxxxxutpvrelsksy8cdhgfux9l6a42hsj2qzquu2zk7vc9qnkszrqj49",
+      "\n",
+      "nostr:note1jp6d36lmquhxqn2s5n4ce00pzu2jrpkek8udav6l0y3qcdngpnxsle6ngm",
+      "\n",
+      "nostr:naddr1qqv8x6r0wf6x2um594cxzarg946x7ttpwajhxmmdv5pzqx78pgq53vlnzmdr8l3u38eru0n3438lnxqz0mr39wg9e5j0dfq3qvzqqqr4gu5d05rr",
+      "\nnostr is cool",
+    ];
+    expect(splitByUrl(input)).toEqual(expected);
+  });
+
+  it("should return an array with a single string if no URLs are found", () => {
+    const inputStr = "This is a regular string with no URLs";
+    const expectedOutput = ["This is a regular string with no URLs"];
+
+    expect(splitByUrl(inputStr)).toEqual(expectedOutput);
+  });
+});
 
 describe("tryParseNostrLink", () => {
   it("is a valid nostr link", () => {
@@ -17,8 +74,8 @@ describe("tryParseNostrLink", () => {
     });
     expect(
       parseNostrLink(
-        "nostr:nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p"
-      )
+        "nostr:nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p",
+      ),
     ).toMatchObject({
       id: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
       type: NostrPrefix.Profile,
@@ -30,8 +87,8 @@ describe("tryParseNostrLink", () => {
     });
     expect(
       parseNostrLink(
-        "nostr:naddr1qqzkjurnw4ksz9thwden5te0wfjkccte9ehx7um5wghx7un8qgs2d90kkcq3nk2jry62dyf50k0h36rhpdtd594my40w9pkal876jxgrqsqqqa28pccpzu"
-      )
+        "nostr:naddr1qqzkjurnw4ksz9thwden5te0wfjkccte9ehx7um5wghx7un8qgs2d90kkcq3nk2jry62dyf50k0h36rhpdtd594my40w9pkal876jxgrqsqqqa28pccpzu",
+      ),
     ).toMatchObject({
       id: "ipsum",
       type: NostrPrefix.Address,

@@ -10,6 +10,8 @@ enum EventKind {
   Reaction = 7, // NIP-25
   BadgeAward = 8, // NIP-58
   SimpleChatMessage = 9, // NIP-29
+  SealedRumor = 13, // NIP-59
+  ChatRumor = 14, // NIP-24
   SnortSubscriptions = 1000, // NIP-XX
   Polls = 6969, // NIP-69
   GiftWrap = 1059, // NIP-59
@@ -22,7 +24,9 @@ enum EventKind {
   TagLists = 30002, // NIP-51c
   Badge = 30009, // NIP-58
   ProfileBadges = 30008, // NIP-58
+  LongFormTextNote = 30023, // NIP-23
   LiveEvent = 30311, // NIP-102
+  UserStatus = 30315, // NIP-38
   ZapstrTrack = 31337,
   SimpleChatMetadata = 39_000, // NIP-29
   ZapRequest = 9734, // NIP 57

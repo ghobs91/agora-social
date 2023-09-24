@@ -2,8 +2,8 @@ import * as secp from "@noble/curves/secp256k1";
 import * as utils from "@noble/curves/abstract/utils";
 import { getPublicKey, sha256, unixNow } from "@snort/shared";
 
-import { EventKind, HexKey, NostrEvent } from ".";
-import { Nip4WebCryptoEncryptor } from "./impl/nip4";
+import { EventKind, HexKey, NostrEvent, NotSignedNostrEvent } from ".";
+import { minePow } from "./pow-util";
 
 export interface Tag {
   key: string;
@@ -44,6 +44,7 @@ export abstract class EventExt {
     if (!secp.schnorr.verify(e.sig, e.id, e.pubkey)) {
       throw new Error("Signing failed");
     }
+    return e;
   }
 
   /**
@@ -56,15 +57,16 @@ export abstract class EventExt {
     return result;
   }
 
-  static createId(e: NostrEvent) {
+  static createId(e: NostrEvent | NotSignedNostrEvent) {
     const payload = [0, e.pubkey, e.created_at, e.kind, e.tags, e.content];
+    return sha256(JSON.stringify(payload));
+  }
 
-    const hash = sha256(JSON.stringify(payload));
-    if (e.id !== "" && hash !== e.id) {
-      console.debug(payload);
-      throw new Error("ID doesnt match!");
-    }
-    return hash;
+  /**
+   * Mine POW for an event (NIP-13)
+   */
+  static minePow(e: NostrEvent, target: number) {
+    return minePow(e, target);
   }
 
   /**
@@ -92,6 +94,7 @@ export abstract class EventExt {
       value: tag[1],
     } as Tag;
     switch (ret.key) {
+      case "a":
       case "e": {
         ret.relay = tag.length > 2 ? tag[2] : undefined;
         ret.marker = tag.length > 3 ? tag[3] : undefined;
@@ -100,52 +103,53 @@ export abstract class EventExt {
     }
     return ret;
   }
-  static extractThread(ev: NostrEvent) {
-    const isThread = ev.tags.some(a => (a[0] === "e" && a[3] !== "mention") || a[0] == "a");
-    if (!isThread) {
-      return undefined;
-    }
 
+  static extractThread(ev: NostrEvent) {
     const shouldWriteMarkers = ev.kind === EventKind.TextNote;
     const ret = {
       mentions: [],
       pubKeys: [],
     } as Thread;
-    const eTags = ev.tags.filter(a => a[0] === "e" || a[0] === "a").map(a => EventExt.parseTag(a));
-    const marked = eTags.some(a => a.marker);
-    if (!marked) {
-      ret.root = eTags[0];
-      ret.root.marker = shouldWriteMarkers ? "root" : undefined;
-      if (eTags.length > 1) {
-        ret.replyTo = eTags[eTags.length - 1];
-        ret.replyTo.marker = shouldWriteMarkers ? "reply" : undefined;
-      }
-      if (eTags.length > 2) {
-        ret.mentions = eTags.slice(1, -1);
-        if (shouldWriteMarkers) {
-          ret.mentions.forEach(a => (a.marker = "mention"));
+    const replyTags = ev.tags.filter(a => a[0] === "e" || a[0] === "a").map(a => EventExt.parseTag(a));
+    if (replyTags.length > 0) {
+      const marked = replyTags.some(a => a.marker);
+      if (!marked) {
+        ret.root = replyTags[0];
+        ret.root.marker = shouldWriteMarkers ? "root" : undefined;
+        if (replyTags.length > 1) {
+          ret.replyTo = replyTags[replyTags.length - 1];
+          ret.replyTo.marker = shouldWriteMarkers ? "reply" : undefined;
         }
+        if (replyTags.length > 2) {
+          ret.mentions = replyTags.slice(1, -1);
+          if (shouldWriteMarkers) {
+            ret.mentions.forEach(a => (a.marker = "mention"));
+          }
+        }
+      } else {
+        const root = replyTags.find(a => a.marker === "root");
+        const reply = replyTags.find(a => a.marker === "reply");
+        ret.root = root;
+        ret.replyTo = reply;
+        ret.mentions = replyTags.filter(a => a.marker === "mention");
       }
     } else {
-      const root = eTags.find(a => a.marker === "root");
-      const reply = eTags.find(a => a.marker === "reply");
-      ret.root = root;
-      ret.replyTo = reply;
-      ret.mentions = eTags.filter(a => a.marker === "mention");
+      return undefined;
     }
     ret.pubKeys = Array.from(new Set(ev.tags.filter(a => a[0] === "p").map(a => a[1])));
     return ret;
   }
 
-  static async decryptDm(content: string, privkey: HexKey, pubkey: HexKey) {
-    const enc = new Nip4WebCryptoEncryptor();
-    const key = enc.getSharedSecret(privkey, pubkey);
-    return await enc.decryptData(content, key);
-  }
-
-  static async encryptDm(content: string, privKey: HexKey, pubKey: HexKey) {
-    const enc = new Nip4WebCryptoEncryptor();
-    const secret = enc.getSharedSecret(privKey, pubKey);
-    return await enc.encryptData(content, secret);
+  /**
+   * Assign props if undefined
+   */
+  static fixupEvent(e: NostrEvent) {
+    e.tags ??= [];
+    e.created_at ??= 0;
+    e.content ??= "";
+    e.id ??= "";
+    e.kind ??= 0;
+    e.pubkey ??= "";
+    e.sig ??= "";
   }
 }

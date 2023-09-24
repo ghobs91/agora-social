@@ -5,10 +5,20 @@ import { useUserProfile } from "@snort/system-react";
 
 import SendSats from "Element/SendSats";
 import Icon from "Icons/Icon";
-import { System } from "index";
+import { ZapTarget } from "Zapper";
 
-const ZapButton = ({ pubkey, lnurl, children }: { pubkey: HexKey; lnurl?: string; children?: React.ReactNode }) => {
-  const profile = useUserProfile(System, pubkey);
+const ZapButton = ({
+  pubkey,
+  lnurl,
+  children,
+  event,
+}: {
+  pubkey: HexKey;
+  lnurl?: string;
+  children?: React.ReactNode;
+  event?: string;
+}) => {
+  const profile = useUserProfile(pubkey);
   const [zap, setZap] = useState(false);
   const service = lnurl ?? (profile?.lud16 || profile?.lud06);
   if (!service) return null;
@@ -20,11 +30,18 @@ const ZapButton = ({ pubkey, lnurl, children }: { pubkey: HexKey; lnurl?: string
         {children}
       </div>
       <SendSats
-        target={profile?.display_name || profile?.name}
-        lnurl={service}
+        targets={[
+          {
+            type: "lnurl",
+            value: service,
+            weight: 1,
+            name: profile?.display_name || profile?.name,
+            zap: { pubkey: pubkey },
+          } as ZapTarget,
+        ]}
         show={zap}
         onClose={() => setZap(false)}
-        author={pubkey}
+        note={event}
       />
     </>
   );

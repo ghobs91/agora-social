@@ -43,6 +43,10 @@ export function unixNowMs() {
   return new Date().getTime();
 }
 
+export function jitter(n: number) {
+  return n * 2 * Math.random() - n;
+}
+
 export function deepClone<T>(obj: T) {
   if ("structuredClone" in window) {
     return structuredClone(obj);
@@ -73,7 +77,7 @@ export function countMembers(a: any) {
 
 export function equalProp(
   a: string | number | Array<string | number> | undefined,
-  b: string | number | Array<string | number> | undefined
+  b: string | number | Array<string | number> | undefined,
 ) {
   if ((a !== undefined && b === undefined) || (a === undefined && b !== undefined)) {
     return false;
@@ -164,7 +168,7 @@ export function bech32ToText(str: string) {
   }
 }
 
-export async function fetchNip05Pubkey(name: string, domain: string, timeout = 2_000) {
+export async function fetchNip05Pubkey(name: string, domain: string, timeout = 2_000): Promise<string | undefined> {
   interface NostrJson {
     names: Record<string, string>;
   }

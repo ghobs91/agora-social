@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { EventKind, FlatNoteStore, RequestBuilder } from "@snort/system";
+import { EventKind, NoteCollection, RequestBuilder } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
+import { unixNow } from "@snort/shared";
 
-import { unixNow, unwrap, tagFilterOfTextRepost } from "SnortUtils";
 import useTimelineWindow from "Hooks/useTimelineWindow";
 import useLogin from "Hooks/useLogin";
-import { System } from "index";
 import { SearchRelays } from "Const";
 
 export interface TimelineFeedOptions {
@@ -19,6 +18,7 @@ export interface TimelineSubject {
   discriminator: string;
   items: string[];
   relay?: string;
+  streams?: boolean;
 }
 
 export type TimelineFeed = ReturnType<typeof useTimelineFeed>;
@@ -41,7 +41,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
       .kinds(
         subject.type === "profile_keyword"
           ? [EventKind.SetMetadata]
-          : [EventKind.TextNote, EventKind.Repost, EventKind.Polls]
+          : [EventKind.TextNote, EventKind.Repost, EventKind.Polls],
       );
 
     if (subject.relay) {
@@ -70,6 +70,13 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
         SearchRelays.forEach(r => f.relay(r));
         break;
       }
+    }
+    if (subject.streams && subject.type === "pubkey") {
+      b.withFilter()
+        .kinds([EventKind.LiveEvent])
+        .authors(subject.items)
+        .since(now - 60 * 60 * 24);
+      b.withFilter().kinds([EventKind.LiveEvent]).tag("p", subject.items);
     }
     return {
       builder: b,
@@ -109,7 +116,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     return rb?.builder ?? null;
   }, [until, since, options.method, pref, createBuilder]);
 
-  const main = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, sub);
+  const main = useRequestBuilder(NoteCollection, sub);
 
   const subRealtime = useMemo(() => {
     const rb = createBuilder();
@@ -123,7 +130,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     return rb?.builder ?? null;
   }, [pref.autoShowLatest, createBuilder]);
 
-  const latest = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, subRealtime);
+  const latest = useRequestBuilder(NoteCollection, subRealtime);
 
   useEffect(() => {
     // clear store if changing relays
@@ -131,49 +138,9 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     latest.clear();
   }, [subject.relay]);
 
-  function getParentEvents() {
-    if (main.data) {
-      const repostsByKind6 = main.data
-        .filter(a => a.kind === EventKind.Repost && a.content === "")
-        .map(a => a.tags.find(b => b[0] === "e"))
-        .filter(a => a)
-        .map(a => unwrap(a)[1]);
-      const repostsByKind1 = main.data
-        .filter(
-          a => (a.kind === EventKind.Repost || a.kind === EventKind.TextNote) && a.tags.some(tagFilterOfTextRepost(a))
-        )
-        .map(a => a.tags.find(tagFilterOfTextRepost(a)))
-        .filter(a => a)
-        .map(a => unwrap(a)[1]);
-      return [...repostsByKind6, ...repostsByKind1];
-    }
-    return [];
-  }
-
-  const subNext = useMemo(() => {
-    const rb = new RequestBuilder(`timeline-related:${subject.type}:${subject.discriminator}`);
-    const trackingEvents = main.data?.map(a => a.id) ?? [];
-    if (trackingEvents.length > 0) {
-      rb.withFilter()
-        .kinds(
-          pref.enableReactions
-            ? [EventKind.Reaction, EventKind.Repost, EventKind.ZapReceipt]
-            : [EventKind.ZapReceipt, EventKind.Repost]
-        )
-        .tag("e", trackingEvents);
-    }
-    const trackingParentEvents = getParentEvents();
-    if (trackingParentEvents.length > 0) {
-      rb.withFilter().ids(trackingParentEvents);
-    }
-    return rb.numFilters > 0 ? rb : null;
-  }, [main.data, pref, subject.type]);
-
-  const related = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, subNext);
-
   return {
     main: main.data,
-    related: related.data,
+    related: [],
     latest: latest.data,
     loading: main.loading(),
     loadMore: () => {

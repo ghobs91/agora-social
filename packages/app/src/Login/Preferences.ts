@@ -66,13 +66,33 @@ export interface UserPreferences {
    * Auto-zap every post
    */
   autoZap: boolean;
+
+  /**
+   * Proof-of-Work to apply to all events
+   */
+  pow?: number;
+
+  /**
+   * Collect usage metrics
+   */
+  telemetry?: boolean;
+
+  /**
+   * Show badges on profiles
+   */
+  showBadges?: boolean;
+
+  /**
+   * Show user status messages on profiles
+   */
+  showStatus?: boolean;
 }
 
 export const DefaultPreferences = {
   language: "en",
   enableReactions: true,
   reactionEmoji: "+",
-  autoLoadMedia: "follows-only",
+  autoLoadMedia: "all",
   theme: "system",
   confirmReposts: false,
   showDebugMenus: false,
@@ -82,4 +102,7 @@ export const DefaultPreferences = {
   defaultRootTab: "notes",
   defaultZapAmount: 50,
   autoZap: false,
+  telemetry: true,
+  showBadges: false,
+  showStatus: true,
 } as UserPreferences;

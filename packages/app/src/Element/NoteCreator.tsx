@@ -1,125 +1,147 @@
 import "./NoteCreator.css";
 import { FormattedMessage, useIntl } from "react-intl";
-import { useDispatch, useSelector } from "react-redux";
-import { encodeTLV, EventKind, NostrPrefix, TaggedRawEvent, EventBuilder } from "@snort/system";
-import { LNURL } from "@snort/shared";
+import {
+  EventKind,
+  NostrPrefix,
+  TaggedNostrEvent,
+  EventBuilder,
+  tryParseNostrLink,
+  NostrLink,
+  NostrEvent,
+} from "@snort/system";
 
 import Icon from "Icons/Icon";
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import { openFile } from "SnortUtils";
 import Textarea from "Element/Textarea";
 import Modal from "Element/Modal";
 import ProfileImage from "Element/ProfileImage";
 import useFileUpload from "Upload";
 import Note from "Element/Note";
-import {
-  setShow,
-  setNote,
-  setError,
-  setActive,
-  setPreview,
-  setShowAdvanced,
-  setSelectedCustomRelays,
-  setZapForward,
-  setSensitive,
-  reset,
-  setPollOptions,
-  setOtherEvents,
-} from "State/NoteCreator";
-import type { RootState } from "State/Store";
 
-import messages from "./messages";
-import { ClipboardEventHandler, useState } from "react";
-import Spinner from "Icons/Spinner";
-import { Menu, MenuItem } from "@szhsin/react-menu";
-import { LoginStore } from "Login";
-import { getCurrentSubscription } from "Subscription";
+import { ClipboardEventHandler } from "react";
 import useLogin from "Hooks/useLogin";
 import { System } from "index";
-
-interface NotePreviewProps {
-  note: TaggedRawEvent;
-}
-
-function NotePreview({ note }: NotePreviewProps) {
-  return (
-    <div className="note-preview">
-      <ProfileImage pubkey={note.pubkey} />
-      <div className="note-preview-body">
-        {note.content.slice(0, 136)}
-        {note.content.length > 140 && "..."}
-      </div>
-    </div>
-  );
-}
+import AsyncButton from "Element/AsyncButton";
+import { AsyncIcon } from "Element/AsyncIcon";
+import { fetchNip05Pubkey } from "@snort/shared";
+import { ZapTarget } from "Zapper";
+import { useNoteCreator } from "State/NoteCreator";
 
 export function NoteCreator() {
   const { formatMessage } = useIntl();
   const publisher = useEventPublisher();
   const uploader = useFileUpload();
-  const {
-    note,
-    zapForward,
-    sensitive,
-    pollOptions,
-    replyTo,
-    otherEvents,
-    preview,
-    active,
-    show,
-    showAdvanced,
-    selectedCustomRelays,
-    error,
-  } = useSelector((s: RootState) => s.noteCreator);
-  const [uploadInProgress, setUploadInProgress] = useState(false);
-  const dispatch = useDispatch();
-  const sub = getCurrentSubscription(LoginStore.allSubscriptions());
-  const login = useLogin();
+  const login = useLogin(s => ({ relays: s.relays, publicKey: s.publicKey }));
+  const note = useNoteCreator();
   const relays = login.relays;
 
-  async function sendNote() {
-    if (note && publisher) {
-      let extraTags: Array<Array<string>> | undefined;
-      if (zapForward) {
-        try {
-          const svc = new LNURL(zapForward);
-          await svc.load();
-          extraTags = [svc.getZapTag()];
-        } catch {
-          dispatch(
-            setError(
-              formatMessage({
-                defaultMessage: "Invalid LNURL",
-              })
-            )
-          );
-          return;
+  async function buildNote() {
+    try {
+      note.update(v => (v.error = ""));
+      if (note && publisher) {
+        let extraTags: Array<Array<string>> | undefined;
+        if (note.zapSplits) {
+          const parsedSplits = [] as Array<ZapTarget>;
+          for (const s of note.zapSplits) {
+            if (s.value.startsWith(NostrPrefix.PublicKey) || s.value.startsWith(NostrPrefix.Profile)) {
+              const link = tryParseNostrLink(s.value);
+              if (link) {
+                parsedSplits.push({ ...s, value: link.id });
+              } else {
+                throw new Error(
+                  formatMessage(
+                    {
+                      defaultMessage: "Failed to parse zap split: {input}",
+                    },
+                    {
+                      input: s.value,
+                    },
+                  ),
+                );
+              }
+            } else if (s.value.includes("@")) {
+              const [name, domain] = s.value.split("@");
+              const pubkey = await fetchNip05Pubkey(name, domain);
+              if (pubkey) {
+                parsedSplits.push({ ...s, value: pubkey });
+              } else {
+                throw new Error(
+                  formatMessage(
+                    {
+                      defaultMessage: "Failed to parse zap split: {input}",
+                    },
+                    {
+                      input: s.value,
+                    },
+                  ),
+                );
+              }
+            } else {
+              throw new Error(
+                formatMessage(
+                  {
+                    defaultMessage: "Invalid zap split: {input}",
+                  },
+                  {
+                    input: s.value,
+                  },
+                ),
+              );
+            }
+          }
+          extraTags = parsedSplits.map(v => ["zap", v.value, "", String(v.weight)]);
         }
-      }
 
-      if (sensitive) {
-        extraTags ??= [];
-        extraTags.push(["content-warning", sensitive]);
+        if (note.sensitive) {
+          extraTags ??= [];
+          extraTags.push(["content-warning", note.sensitive]);
+        }
+        const kind = note.pollOptions ? EventKind.Polls : EventKind.TextNote;
+        if (note.pollOptions) {
+          extraTags ??= [];
+          extraTags.push(...note.pollOptions.map((a, i) => ["poll_option", i.toString(), a]));
+        }
+        const hk = (eb: EventBuilder) => {
+          extraTags?.forEach(t => eb.tag(t));
+          eb.kind(kind);
+          return eb;
+        };
+        const ev = note.replyTo
+          ? await publisher.reply(note.replyTo, note.note, hk)
+          : await publisher.note(note.note, hk);
+        return ev;
       }
-      const kind = pollOptions ? EventKind.Polls : EventKind.TextNote;
-      if (pollOptions) {
-        extraTags ??= [];
-        extraTags.push(...pollOptions.map((a, i) => ["poll_option", i.toString(), a]));
+    } catch (e) {
+      note.update(v => {
+        if (e instanceof Error) {
+          v.error = e.message;
+        } else {
+          v.error = e as string;
+        }
+      });
+    }
+  }
+
+  async function sendEventToRelays(ev: NostrEvent) {
+    if (note.selectedCustomRelays) {
+      await Promise.all(note.selectedCustomRelays.map(r => System.WriteOnceToRelay(r, ev)));
+    } else {
+      System.BroadcastEvent(ev);
+    }
+  }
+
+  async function sendNote() {
+    const ev = await buildNote();
+    if (ev) {
+      await sendEventToRelays(ev);
+      for (const oe of note.otherEvents ?? []) {
+        await sendEventToRelays(oe);
       }
-      const hk = (eb: EventBuilder) => {
-        extraTags?.forEach(t => eb.tag(t));
-        eb.kind(kind);
-        return eb;
-      };
-      const ev = replyTo ? await publisher.reply(replyTo, note, hk) : await publisher.note(note, hk);
-      if (selectedCustomRelays) selectedCustomRelays.forEach(r => System.WriteOnceToRelay(r, ev));
-      else System.BroadcastEvent(ev);
-      dispatch(reset());
-      for (const oe of otherEvents) {
-        if (selectedCustomRelays) selectedCustomRelays.forEach(r => System.WriteOnceToRelay(r, oe));
-        else System.BroadcastEvent(oe);
-      }
-      dispatch(reset());
+      note.update(v => {
+        v.reset();
+        v.show = false;
+      });
     }
   }
 
@@ -129,76 +151,81 @@ export function NoteCreator() {
       if (file) {
         uploadFile(file);
       }
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        dispatch(setError(error?.message));
-      }
+    } catch (e) {
+      note.update(v => {
+        if (e instanceof Error) {
+          v.error = e.message;
+        } else {
+          v.error = e as string;
+        }
+      });
     }
   }
 
   async function uploadFile(file: File | Blob) {
-    setUploadInProgress(true);
     try {
       if (file) {
         const rx = await uploader.upload(file, file.name);
-        if (rx.header) {
-          const link = `nostr:${encodeTLV(NostrPrefix.Event, rx.header.id, undefined, rx.header.kind)}`;
-          dispatch(setNote(`${note ? `${note}\n` : ""}${link}`));
-          dispatch(setOtherEvents([...otherEvents, rx.header]));
-        } else if (rx.url) {
-          dispatch(setNote(`${note ? `${note}\n` : ""}${rx.url}`));
-        } else if (rx?.error) {
-          dispatch(setError(rx.error));
+        note.update(v => {
+          if (rx.header) {
+            const link = `nostr:${new NostrLink(NostrPrefix.Event, rx.header.id, rx.header.kind).encode()}`;
+            v.note = `${v.note ? `${v.note}\n` : ""}${link}`;
+            v.otherEvents = [...(v.otherEvents ?? []), rx.header];
+          } else if (rx.url) {
+            v.note = `${v.note ? `${v.note}\n` : ""}${rx.url}`;
+          } else if (rx?.error) {
+            v.error = rx.error;
+          }
+        });
+      }
+    } catch (e) {
+      note.update(v => {
+        if (e instanceof Error) {
+          v.error = e.message;
+        } else {
+          v.error = e as string;
         }
-      }
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        dispatch(setError(error?.message));
-      }
-    } finally {
-      setUploadInProgress(false);
+      });
     }
   }
 
   function onChange(ev: React.ChangeEvent<HTMLTextAreaElement>) {
     const { value } = ev.target;
-    dispatch(setNote(value));
-    if (value) {
-      dispatch(setActive(true));
-    } else {
-      dispatch(setActive(false));
-    }
+    note.update(n => (n.note = value));
   }
 
   function cancel() {
-    dispatch(reset());
+    note.update(v => {
+      v.show = false;
+      v.reset();
+    });
   }
 
-  function onSubmit(ev: React.MouseEvent<HTMLButtonElement>) {
+  async function onSubmit(ev: React.MouseEvent<HTMLButtonElement>) {
     ev.stopPropagation();
-    sendNote().catch(console.warn);
+    await sendNote();
   }
 
   async function loadPreview() {
-    if (preview) {
-      dispatch(setPreview(undefined));
+    if (note.preview) {
+      note.update(v => (v.preview = undefined));
     } else if (publisher) {
-      const tmpNote = await publisher.note(note);
-      if (tmpNote) {
-        dispatch(setPreview(tmpNote));
-      }
+      const tmpNote = await buildNote();
+      note.update(v => (v.preview = tmpNote));
     }
   }
 
   function getPreviewNote() {
-    if (preview) {
+    if (note.preview) {
       return (
         <Note
-          data={preview as TaggedRawEvent}
+          data={note.preview as TaggedNostrEvent}
           related={[]}
           options={{
+            showContextMenu: false,
             showFooter: false,
             canClick: false,
+            showTime: false,
           }}
         />
       );
@@ -206,13 +233,13 @@ export function NoteCreator() {
   }
 
   function renderPollOptions() {
-    if (pollOptions) {
+    if (note.pollOptions) {
       return (
         <>
           <h4>
             <FormattedMessage defaultMessage="Poll Options" />
           </h4>
-          {pollOptions?.map((a, i) => (
+          {note.pollOptions?.map((a, i) => (
             <div className="form-group w-max" key={`po-${i}`}>
               <div>
                 <FormattedMessage defaultMessage="Option: {n}" values={{ n: i + 1 }} />
@@ -227,7 +254,7 @@ export function NoteCreator() {
               </div>
             </div>
           ))}
-          <button onClick={() => dispatch(setPollOptions([...pollOptions, ""]))}>
+          <button onClick={() => note.update(v => (v.pollOptions = [...(note.pollOptions ?? []), ""]))}>
             <Icon name="plus" size={14} />
           </button>
         </>
@@ -236,48 +263,50 @@ export function NoteCreator() {
   }
 
   function changePollOption(i: number, v: string) {
-    if (pollOptions) {
-      const copy = [...pollOptions];
+    if (note.pollOptions) {
+      const copy = [...note.pollOptions];
       copy[i] = v;
-      dispatch(setPollOptions(copy));
+      note.update(v => (v.pollOptions = copy));
     }
   }
 
   function removePollOption(i: number) {
-    if (pollOptions) {
-      const copy = [...pollOptions];
+    if (note.pollOptions) {
+      const copy = [...note.pollOptions];
       copy.splice(i, 1);
-      dispatch(setPollOptions(copy));
+      note.update(v => (v.pollOptions = copy));
     }
   }
 
   function renderRelayCustomisation() {
     return (
-      <div>
+      <div className="flex-column g8">
         {Object.keys(relays.item || {})
           .filter(el => relays.item[el].write)
           .map((r, i, a) => (
-            <div className="card flex">
-              <div className="flex f-col f-grow">
-                <div>{r}</div>
-              </div>
+            <div className="p flex f-space note-creator-relay">
+              <div>{r}</div>
               <div>
                 <input
                   type="checkbox"
-                  checked={!selectedCustomRelays || selectedCustomRelays.includes(r)}
-                  onChange={e =>
-                    dispatch(
-                      setSelectedCustomRelays(
-                        // set false if all relays selected
-                        e.target.checked && selectedCustomRelays && selectedCustomRelays.length == a.length - 1
-                          ? false
-                          : // otherwise return selectedCustomRelays with target relay added / removed
-                            a.filter(el =>
-                              el === r ? e.target.checked : !selectedCustomRelays || selectedCustomRelays.includes(el)
-                            )
-                      )
-                    )
-                  }
+                  checked={!note.selectedCustomRelays || note.selectedCustomRelays.includes(r)}
+                  onChange={e => {
+                    note.update(
+                      v =>
+                        (v.selectedCustomRelays =
+                          // set false if all relays selected
+                          e.target.checked &&
+                          note.selectedCustomRelays &&
+                          note.selectedCustomRelays.length == a.length - 1
+                            ? undefined
+                            : // otherwise return selectedCustomRelays with target relay added / removed
+                              a.filter(el =>
+                                el === r
+                                  ? e.target.checked
+                                  : !note.selectedCustomRelays || note.selectedCustomRelays.includes(el),
+                              )),
+                    );
+                  }}
                 />
               </div>
             </div>
@@ -286,7 +315,7 @@ export function NoteCreator() {
     );
   }
 
-  function listAccounts() {
+  /*function listAccounts() {
     return LoginStore.getSessions().map(a => (
       <MenuItem
         onClick={ev => {
@@ -296,7 +325,7 @@ export function NoteCreator() {
         <ProfileImage pubkey={a} link={""} />
       </MenuItem>
     ));
-  }
+  }*/
 
   const handlePaste: ClipboardEventHandler<HTMLDivElement> = evt => {
     if (evt.clipboardData) {
@@ -317,123 +346,167 @@ export function NoteCreator() {
     }
   };
 
+  if (!note.show) return null;
   return (
-    <>
-      {show && (
-        <Modal className="note-creator-modal" onClose={() => dispatch(setShow(false))}>
-          {replyTo && <NotePreview note={replyTo} />}
-          {preview && getPreviewNote()}
-          {!preview && (
-            <div
-              onPaste={handlePaste}
-              className={`flex note-creator${replyTo ? " note-reply" : ""}${pollOptions ? " poll" : ""}`}>
-              <div className="flex f-col f-grow">
-                <Textarea
-                  autoFocus
-                  className={`textarea ${active ? "textarea--focused" : ""}`}
-                  onChange={onChange}
-                  value={note}
-                  onFocus={() => dispatch(setActive(true))}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && e.metaKey) {
-                      sendNote().catch(console.warn);
-                    }
-                  }}
-                />
-                {renderPollOptions()}
-                <div className="insert">
-                  {sub && (
-                    <Menu
-                      menuButton={
-                        <button>
-                          <Icon name="code-circle" />
-                        </button>
-                      }
-                      menuClassName="ctx-menu">
-                      {listAccounts()}
-                    </Menu>
-                  )}
-                  {pollOptions === undefined && !replyTo && (
-                    <button onClick={() => dispatch(setPollOptions(["A", "B"]))}>
-                      <Icon name="pie-chart" />
-                    </button>
-                  )}
-                  <button onClick={attachFile}>
-                    <Icon name="attachment" />
-                  </button>
-                </div>
-              </div>
-              {error && <span className="error">{error}</span>}
-            </div>
-          )}
-          <div className="note-creator-actions">
-            {uploadInProgress && <Spinner />}
-            <button className="secondary" onClick={() => dispatch(setShowAdvanced(!showAdvanced))}>
-              <FormattedMessage defaultMessage="Advanced" />
-            </button>
-            <button className="secondary" onClick={cancel}>
-              <FormattedMessage {...messages.Cancel} />
-            </button>
-            <button onClick={onSubmit}>
-              {replyTo ? <FormattedMessage {...messages.Reply} /> : <FormattedMessage {...messages.Send} />}
-            </button>
-          </div>
-          {showAdvanced && (
-            <div>
-              <button className="secondary" onClick={loadPreview}>
-                <FormattedMessage defaultMessage="Toggle Preview" />
-              </button>
-              <h4>
-                <FormattedMessage defaultMessage="Custom Relays" />
-              </h4>
-              <p>
-                <FormattedMessage defaultMessage="Send note to a subset of your write relays" />
-              </p>
-              {renderRelayCustomisation()}
-              <h4>
-                <FormattedMessage defaultMessage="Forward Zaps" />
-              </h4>
-              <p>
-                <FormattedMessage defaultMessage="All zaps sent to this note will be received by the following LNURL" />
-              </p>
-              <b className="warning">
-                <FormattedMessage defaultMessage="Not all clients support this yet" />
-              </b>
-              <input
-                type="text"
-                className="w-max"
-                placeholder={formatMessage({
-                  defaultMessage: "LNURL to forward zaps to",
-                })}
-                value={zapForward}
-                onChange={e => dispatch(setZapForward(e.target.value))}
-              />
-              <h4>
-                <FormattedMessage defaultMessage="Sensitive Content" />
-              </h4>
-              <p>
-                <FormattedMessage defaultMessage="Users must accept the content warning to show the content of your note." />
-              </p>
-              <b className="warning">
-                <FormattedMessage defaultMessage="Not all clients support this yet" />
-              </b>
-              <div className="flex">
-                <input
-                  className="w-max"
-                  type="text"
-                  value={sensitive}
-                  onChange={e => dispatch(setSensitive(e.target.value))}
-                  maxLength={50}
-                  minLength={1}
-                  placeholder={formatMessage({
-                    defaultMessage: "Reason",
-                  })}
-                />
-              </div>
-            </div>
-          )}
-        </Modal>
+    <Modal id="note-creator" className="note-creator-modal" onClose={() => note.update(v => (v.show = false))}>
+      {note.replyTo && (
+        <Note
+          data={note.replyTo}
+          related={[]}
+          options={{
+            showFooter: false,
+            showContextMenu: false,
+            showTime: false,
+            canClick: false,
+            showMedia: false,
+          }}
+        />
       )}
-    </>
+      {note.preview && getPreviewNote()}
+      {!note.preview && (
+        <div onPaste={handlePaste} className={`note-creator${note.pollOptions ? " poll" : ""}`}>
+          <Textarea
+            autoFocus
+            className={`textarea ${note.active ? "textarea--focused" : ""}`}
+            onChange={c => onChange(c)}
+            value={note.note}
+            onFocus={() => note.update(v => (v.active = true))}
+            onKeyDown={e => {
+              if (e.key === "Enter" && e.metaKey) {
+                sendNote().catch(console.warn);
+              }
+            }}
+          />
+          {renderPollOptions()}
+        </div>
+      )}
+      <div className="flex f-space">
+        <div className="flex g8">
+          <ProfileImage
+            pubkey={login.publicKey ?? ""}
+            className="note-creator-icon"
+            link=""
+            showUsername={false}
+            showFollowingMark={false}
+          />
+          {note.pollOptions === undefined && !note.replyTo && (
+            <div className="note-creator-icon">
+              <Icon name="pie-chart" onClick={() => note.update(v => (v.pollOptions = ["A", "B"]))} size={24} />
+            </div>
+          )}
+          <AsyncIcon iconName="image-plus" iconSize={24} onClick={attachFile} className="note-creator-icon" />
+          <button className="secondary" onClick={() => note.update(v => (v.advanced = !v.advanced))}>
+            <FormattedMessage defaultMessage="Advanced" />
+          </button>
+        </div>
+        <div className="flex g8">
+          <button className="secondary" onClick={cancel}>
+            <FormattedMessage defaultMessage="Cancel" />
+          </button>
+          <AsyncButton onClick={onSubmit}>
+            {note.replyTo ? <FormattedMessage defaultMessage="Reply" /> : <FormattedMessage defaultMessage="Send" />}
+          </AsyncButton>
+        </div>
+      </div>
+      {note.error && <span className="error">{note.error}</span>}
+      {note.advanced && (
+        <>
+          <button className="secondary" onClick={loadPreview}>
+            <FormattedMessage defaultMessage="Toggle Preview" />
+          </button>
+          <div>
+            <h4>
+              <FormattedMessage defaultMessage="Custom Relays" />
+            </h4>
+            <p>
+              <FormattedMessage defaultMessage="Send note to a subset of your write relays" />
+            </p>
+            {renderRelayCustomisation()}
+          </div>
+          <div className="flex-column g8">
+            <h4>
+              <FormattedMessage defaultMessage="Zap Splits" />
+            </h4>
+            <FormattedMessage defaultMessage="Zaps on this note will be split to the following users." />
+            <div className="flex-column g8">
+              {[...(note.zapSplits ?? [])].map((v, i, arr) => (
+                <div className="flex f-center g8">
+                  <div className="flex-column f-4 g4">
+                    <h4>
+                      <FormattedMessage defaultMessage="Recipient" />
+                    </h4>
+                    <input
+                      type="text"
+                      value={v.value}
+                      onChange={e =>
+                        note.update(
+                          v => (v.zapSplits = arr.map((vv, ii) => (ii === i ? { ...vv, value: e.target.value } : vv))),
+                        )
+                      }
+                      placeholder={formatMessage({ defaultMessage: "npub / nprofile / nostr address" })}
+                    />
+                  </div>
+                  <div className="flex-column f-1 g4">
+                    <h4>
+                      <FormattedMessage defaultMessage="Weight" />
+                    </h4>
+                    <input
+                      type="number"
+                      min={0}
+                      value={v.weight}
+                      onChange={e =>
+                        note.update(
+                          v =>
+                            (v.zapSplits = arr.map((vv, ii) =>
+                              ii === i ? { ...vv, weight: Number(e.target.value) } : vv,
+                            )),
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="flex-column f-shrink g4">
+                    <div>&nbsp;</div>
+                    <Icon
+                      name="close"
+                      onClick={() => note.update(v => (v.zapSplits = (v.zapSplits ?? []).filter((_v, ii) => ii !== i)))}
+                    />
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  note.update(v => (v.zapSplits = [...(v.zapSplits ?? []), { type: "pubkey", value: "", weight: 1 }]))
+                }>
+                <FormattedMessage defaultMessage="Add" />
+              </button>
+            </div>
+            <span className="warning">
+              <FormattedMessage defaultMessage="Not all clients support this, you may still receive some zaps as if zap splits was not configured" />
+            </span>
+          </div>
+          <div className="flex-column g8">
+            <h4>
+              <FormattedMessage defaultMessage="Sensitive Content" />
+            </h4>
+            <FormattedMessage defaultMessage="Users must accept the content warning to show the content of your note." />
+            <input
+              className="w-max"
+              type="text"
+              value={note.sensitive}
+              onChange={e => note.update(v => (v.sensitive = e.target.value))}
+              maxLength={50}
+              minLength={1}
+              placeholder={formatMessage({
+                defaultMessage: "Reason",
+              })}
+            />
+            <span className="warning">
+              <FormattedMessage defaultMessage="Not all clients support this yet" />
+            </span>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }

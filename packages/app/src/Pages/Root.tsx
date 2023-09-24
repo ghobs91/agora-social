@@ -1,15 +1,23 @@
-import "./Root.css";
-import { useEffect, useMemo, useState } from "react";
-import { Link, Outlet, RouteObject, useLocation, useNavigate, useParams } from "react-router-dom";
-import { useIntl, FormattedMessage } from "react-intl";
+import { useContext, useEffect, useState } from "react";
+import { Link, Outlet, RouteObject, useParams } from "react-router-dom";
+import { FormattedMessage } from "react-intl";
+import { unixNow } from "@snort/shared";
+import { NostrLink } from "@snort/system";
 
-import Tabs, { Tab } from "Element/Tabs";
 import Timeline from "Element/Timeline";
 import { System } from "index";
 import { TimelineSubject } from "Feed/TimelineFeed";
-import { debounce, getRelayName, sha256, unixNow, unwrap } from "SnortUtils";
+import { debounce, getRelayName, sha256 } from "SnortUtils";
 import useLogin from "Hooks/useLogin";
 import Discover from "Pages/Discover";
+import TrendingUsers from "Element/TrendingUsers";
+import TrendingNotes from "Element/TrendingPosts";
+import HashTagsPage from "Pages/HashTagsPage";
+import SuggestedProfiles from "Element/SuggestedProfiles";
+import { TaskList } from "Tasks/TaskList";
+import TimelineFollows from "Element/TimelineFollows";
+import { RootTabs } from "Element/RootTabs";
+import { DeckContext } from "Pages/DeckLayout";
 
 import messages from "./messages";
 
@@ -19,78 +27,10 @@ interface RelayOption {
 }
 
 export default function RootPage() {
-  const { formatMessage } = useIntl();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { publicKey: pubKey, tags, preferences } = useLogin();
-
-  const RootTab: Record<string, Tab> = {
-    Notes: {
-      text: formatMessage(messages.Notes),
-      value: 0,
-      data: "/notes",
-    },
-    Conversations: {
-      text: formatMessage(messages.Conversations),
-      value: 1,
-      data: "/conversations",
-    },
-    Global: {
-      text: formatMessage(messages.Global),
-      value: 2,
-      data: "/global",
-    },
-    Discover: {
-      text: formatMessage({ defaultMessage: "Discover" }),
-      value: 3,
-      data: "/discover",
-    },
-  };
-
-  const tagTabs = tags.item.map((t, idx) => {
-    return { text: `#${t}`, value: idx + 3, data: `/tag/${t}` };
-  });
-  const tabs = [RootTab.Notes, RootTab.Conversations, RootTab.Global, RootTab.Discover, ...tagTabs];
-  const tab = useMemo(() => {
-    const pTab = location.pathname.split("/").slice(-1)[0];
-
-    if (location.pathname.startsWith("/tag")) {
-      const selectedTag = tagTabs.find(t => t.text.slice(1) === pTab);
-
-      if (selectedTag) {
-        return selectedTag;
-      }
-    }
-
-    switch (pTab) {
-      case "conversations": {
-        return RootTab.Conversations;
-      }
-      case "global": {
-        return RootTab.Global;
-      }
-      case "discover": {
-        return RootTab.Discover;
-      }
-      default: {
-        return RootTab.Notes;
-      }
-    }
-  }, [location]);
-
-  useEffect(() => {
-    if (location.pathname === "/") {
-      const t = pubKey ? preferences.defaultRootTab ?? tab.data : "/global";
-      navigate(t, {
-        replace: true,
-      });
-    }
-  }, [location]);
-
   return (
     <>
-      <div className="main-content">
-        {pubKey && <Tabs tabs={tabs} tab={tab} setTab={t => navigate(unwrap(t.data))} />}
+      <div className="main-content p">
+        <RootTabs base="" />
       </div>
       <div className="main-content">
         <Outlet />
@@ -118,7 +58,7 @@ const FollowsHint = () => {
   return null;
 };
 
-const GlobalTab = () => {
+export const GlobalTab = () => {
   const { relays } = useLogin();
   const [relay, setRelay] = useState<RelayOption>();
   const [allRelays, setAllRelays] = useState<RelayOption[]>();
@@ -194,65 +134,103 @@ const GlobalTab = () => {
   );
 };
 
-const NotesTab = () => {
-  const { follows, publicKey } = useLogin();
-  const subject: TimelineSubject = {
-    type: "pubkey",
-    items: follows.item,
-    discriminator: `follows:${publicKey?.slice(0, 12)}`,
-  };
+export const NotesTab = () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const deckContext = useContext(DeckContext);
 
   return (
     <>
       <FollowsHint />
-      <Timeline subject={subject} postsOnly={true} method={"TIME_RANGE"} />
+      <TaskList />
+      <TimelineFollows
+        postsOnly={true}
+        noteOnClick={
+          deckContext
+            ? ev => {
+                deckContext.setThread(NostrLink.fromEvent(ev));
+              }
+            : undefined
+        }
+      />
     </>
   );
 };
 
-const ConversationsTab = () => {
-  const { follows, publicKey } = useLogin();
+export const ConversationsTab = () => {
+  return <TimelineFollows postsOnly={false} />;
+};
+
+export const TagsTab = (params: { tag?: string }) => {
+  const { tag } = useParams();
+  const t = params.tag ?? tag ?? "";
   const subject: TimelineSubject = {
-    type: "pubkey",
-    items: follows.item,
-    discriminator: `follows:${publicKey?.slice(0, 12)}`,
+    type: "hashtag",
+    items: [t],
+    discriminator: `tags-${t}`,
+    streams: true,
   };
 
   return <Timeline subject={subject} postsOnly={false} method={"TIME_RANGE"} />;
 };
 
-const TagsTab = () => {
-  const { tag } = useParams();
-  const subject: TimelineSubject = { type: "hashtag", items: [tag ?? ""], discriminator: `tags-${tag}` };
-
-  return <Timeline subject={subject} postsOnly={false} method={"TIME_RANGE"} />;
+const DefaultTab = () => {
+  const { preferences, publicKey } = useLogin();
+  const tab = publicKey ? preferences.defaultRootTab ?? `notes` : `trending/notes`;
+  const elm = RootTabRoutes.find(a => a.path === tab)?.element;
+  return elm;
 };
+
+export const RootTabRoutes = [
+  {
+    path: "",
+    element: <DefaultTab />,
+  },
+  {
+    path: "global",
+    element: <GlobalTab />,
+  },
+  {
+    path: "notes",
+    element: <NotesTab />,
+  },
+  {
+    path: "conversations",
+    element: <ConversationsTab />,
+  },
+  {
+    path: "discover",
+    element: <Discover />,
+  },
+  {
+    path: "tag/:tag",
+    element: <TagsTab />,
+  },
+  {
+    path: "trending/notes",
+    element: <TrendingNotes />,
+  },
+  {
+    path: "trending/people",
+    element: <TrendingUsers />,
+  },
+  {
+    path: "suggested",
+    element: (
+      <div className="p">
+        <SuggestedProfiles />
+      </div>
+    ),
+  },
+  {
+    path: "t/:tag",
+    element: <HashTagsPage />,
+  },
+];
 
 export const RootRoutes = [
   {
     path: "/",
     element: <RootPage />,
-    children: [
-      {
-        path: "global",
-        element: <GlobalTab />,
-      },
-      {
-        path: "notes",
-        element: <NotesTab />,
-      },
-      {
-        path: "conversations",
-        element: <ConversationsTab />,
-      },
-      {
-        path: "discover",
-        element: <Discover />,
-      },
-      {
-        path: "tag/:tag",
-        element: <TagsTab />,
-      },
-    ],
+    children: RootTabRoutes,
   },
 ] as RouteObject[];

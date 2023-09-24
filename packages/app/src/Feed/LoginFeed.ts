@@ -1,10 +1,10 @@
 import { useEffect, useMemo } from "react";
-import { TaggedRawEvent, Lists, EventKind, FlatNoteStore, RequestBuilder } from "@snort/system";
+import { TaggedNostrEvent, Lists, EventKind, FlatNoteStore, RequestBuilder, NoteCollection } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
 
 import { bech32ToHex, getNewest, getNewestEventTagsByKey, unwrap } from "SnortUtils";
 import { makeNotification, sendNotification } from "Notifications";
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import { getMutedKeys } from "Feed/MuteList";
 import useModeration from "Hooks/useModeration";
 import useLogin from "Hooks/useLogin";
@@ -12,9 +12,10 @@ import { addSubscription, setBlocked, setBookmarked, setFollows, setMuted, setPi
 import { SnortPubKey } from "Const";
 import { SubscriptionEvent } from "Subscription";
 import useRelaysFeedFollows from "./RelaysFeedFollows";
-import { UserRelays } from "Cache";
+import { FollowsFeed, GiftsCache, Notifications, UserRelays } from "Cache";
 import { System } from "index";
-import { Nip29Chats, Nip4Chats } from "chat";
+import { Nip4Chats } from "chat";
+import { useRefreshFeedCache } from "Hooks/useRefreshFeedcache";
 
 /**
  * Managed loading data for the current logged in user
@@ -25,6 +26,10 @@ export default function useLoginFeed() {
   const { isMuted } = useModeration();
   const publisher = useEventPublisher();
 
+  useRefreshFeedCache(Notifications, true);
+  useRefreshFeedCache(FollowsFeed, true);
+  useRefreshFeedCache(GiftsCache, true);
+
   const subLogin = useMemo(() => {
     if (!pubKey) return null;
 
@@ -33,7 +38,6 @@ export default function useLoginFeed() {
       leaveOpen: true,
     });
     b.withFilter().authors([pubKey]).kinds([EventKind.ContactList]);
-    b.withFilter().kinds([EventKind.TextNote]).tag("p", [pubKey]).limit(1);
     b.withFilter()
       .kinds([EventKind.SnortSubscriptions])
       .authors([bech32ToHex(SnortPubKey)])
@@ -41,7 +45,6 @@ export default function useLoginFeed() {
       .limit(1);
 
     b.add(Nip4Chats.subscription(pubKey));
-    b.add(Nip29Chats.subscription("n29.nostr.com/"));
 
     return b;
   }, [pubKey]);
@@ -60,7 +63,7 @@ export default function useLoginFeed() {
     return b;
   }, [pubKey]);
 
-  const loginFeed = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, subLogin);
+  const loginFeed = useRequestBuilder(NoteCollection, subLogin);
 
   // update relays and follow lists
   useEffect(() => {
@@ -73,18 +76,14 @@ export default function useLoginFeed() {
         }
         const pTags = contactList.tags.filter(a => a[0] === "p").map(a => a[1]);
         setFollows(login, pTags, contactList.created_at * 1000);
+
+        FollowsFeed.backFillIfMissing(System, pTags);
       }
 
-      const dms = loginFeed.data.filter(a => a.kind === EventKind.DirectMessage && a.tags.some(b => b[0] === "p"));
-      Nip4Chats.onEvent(dms);
-
-      const nip29Messages = loginFeed.data.filter(
-        a => a.kind === EventKind.SimpleChatMessage && a.tags.some(b => b[0] === "g")
-      );
-      Nip29Chats.onEvent(nip29Messages);
+      Nip4Chats.onEvent(loginFeed.data);
 
       const subs = loginFeed.data.filter(
-        a => a.kind === EventKind.SnortSubscriptions && a.pubkey === bech32ToHex(SnortPubKey)
+        a => a.kind === EventKind.SnortSubscriptions && a.pubkey === bech32ToHex(SnortPubKey),
       );
       Promise.all(
         subs.map(async a => {
@@ -96,7 +95,7 @@ export default function useLoginFeed() {
               ...ex,
             } as SubscriptionEvent;
           }
-        })
+        }),
       ).then(a => addSubscription(login, ...a.filter(a => a !== undefined).map(unwrap)));
     }
   }, [loginFeed, publisher]);
@@ -105,7 +104,7 @@ export default function useLoginFeed() {
   useEffect(() => {
     if (loginFeed.data) {
       const replies = loginFeed.data.filter(
-        a => a.kind === EventKind.TextNote && !isMuted(a.pubkey) && a.created_at > readNotifications
+        a => a.kind === EventKind.TextNote && !isMuted(a.pubkey) && a.created_at > readNotifications,
       );
       replies.forEach(async nx => {
         const n = await makeNotification(nx);
@@ -116,7 +115,7 @@ export default function useLoginFeed() {
     }
   }, [loginFeed, readNotifications]);
 
-  function handleMutedFeed(mutedFeed: TaggedRawEvent[]) {
+  function handleMutedFeed(mutedFeed: TaggedNostrEvent[]) {
     const muted = getMutedKeys(mutedFeed);
     setMuted(login, muted.keys, muted.createdAt * 1000);
 
@@ -136,32 +135,32 @@ export default function useLoginFeed() {
     }
   }
 
-  function handlePinnedFeed(pinnedFeed: TaggedRawEvent[]) {
+  function handlePinnedFeed(pinnedFeed: TaggedNostrEvent[]) {
     const newest = getNewestEventTagsByKey(pinnedFeed, "e");
     if (newest) {
       setPinned(login, newest.keys, newest.createdAt * 1000);
     }
   }
 
-  function handleTagFeed(tagFeed: TaggedRawEvent[]) {
+  function handleTagFeed(tagFeed: TaggedNostrEvent[]) {
     const newest = getNewestEventTagsByKey(tagFeed, "t");
     if (newest) {
       setTags(login, newest.keys, newest.createdAt * 1000);
     }
   }
 
-  function handleBookmarkFeed(bookmarkFeed: TaggedRawEvent[]) {
+  function handleBookmarkFeed(bookmarkFeed: TaggedNostrEvent[]) {
     const newest = getNewestEventTagsByKey(bookmarkFeed, "e");
     if (newest) {
       setBookmarked(login, newest.keys, newest.createdAt * 1000);
     }
   }
 
-  const listsFeed = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, subLists);
+  const listsFeed = useRequestBuilder(FlatNoteStore, subLists);
 
   useEffect(() => {
     if (listsFeed.data) {
-      const getList = (evs: readonly TaggedRawEvent[], list: Lists) =>
+      const getList = (evs: readonly TaggedNostrEvent[], list: Lists) =>
         evs.filter(a => unwrap(a.tags.find(b => b[0] === "d"))[1] === list);
 
       const mutedFeed = getList(listsFeed.data, Lists.Muted);

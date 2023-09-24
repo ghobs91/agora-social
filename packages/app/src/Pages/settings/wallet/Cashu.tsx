@@ -31,7 +31,7 @@ const ConnectCashu = () => {
         data: mintUrl,
       } as WalletConfig;
       Wallets.add(newWallet);
-      navigate("/wallet");
+      navigate("/settings/wallet");
     } catch (e) {
       if (e instanceof Error) {
         setError((e as Error).message);
@@ -39,7 +39,7 @@ const ConnectCashu = () => {
         setError(
           formatMessage({
             defaultMessage: "Unknown error",
-          })
+          }),
         );
       }
     }

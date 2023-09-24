@@ -1,5 +1,5 @@
 import { equalProp } from "@snort/shared";
-import { FlatReqFilter } from "./request-expander";
+import { FlatReqFilter } from "./query-optimizer";
 import { NostrEvent, ReqFilter } from "./nostr";
 
 export function findTag(e: NostrEvent, tag: string) {
@@ -42,4 +42,11 @@ export function flatFilterEq(a: FlatReqFilter, b: FlatReqFilter): boolean {
     a["#d"] === b["#d"] &&
     a["#r"] === b["#r"]
   );
+}
+
+export function splitByUrl(str: string) {
+  const urlRegex =
+    /((?:http|ftp|https|nostr|web\+nostr|magnet):\/?\/?(?:[\w+?.\w+])+(?:[\p{L}\p{N}~!@#$%^&*()_\-=+\\/?.:;',]*)?(?:[-a-z0-9+&@#/%=~()_|]))/iu;
+
+  return str.split(urlRegex);
 }

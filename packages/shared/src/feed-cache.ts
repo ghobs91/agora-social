@@ -15,7 +15,7 @@ export interface KeyedHookFilter {
 export abstract class FeedCache<TCached> {
   #name: string;
   #hooks: Array<KeyedHookFilter> = [];
-  #snapshot: Readonly<Array<TCached>> = [];
+  #snapshot: Array<TCached> = [];
   #changed = true;
   #hits = 0;
   #miss = 0;
@@ -32,9 +32,13 @@ export abstract class FeedCache<TCached> {
         this.cache.size,
         this.onTable.size,
         this.#hooks.length,
-        ((this.#hits / (this.#hits + this.#miss)) * 100).toFixed(1)
+        ((this.#hits / (this.#hits + this.#miss)) * 100).toFixed(1),
       );
     }, 30_000);
+  }
+
+  get name() {
+    return this.#name;
   }
 
   async preload() {
@@ -111,7 +115,7 @@ export abstract class FeedCache<TCached> {
     this.notifyChange([k]);
   }
 
-  async bulkSet(obj: Array<TCached>) {
+  async bulkSet(obj: Array<TCached> | Readonly<Array<TCached>>) {
     if (this.table) {
       await this.table.bulkPut(obj);
       obj.forEach(a => this.onTable.add(this.key(a)));
@@ -174,7 +178,7 @@ export abstract class FeedCache<TCached> {
         `Loaded %d/%d in %d ms`,
         fromCacheFiltered.length,
         keys.length,
-        (unixNowMs() - start).toLocaleString()
+        (unixNowMs() - start).toLocaleString(),
       );
       return mapped.filter(a => !a.has).map(a => a.key);
     }

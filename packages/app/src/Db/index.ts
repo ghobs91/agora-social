@@ -1,8 +1,8 @@
 import Dexie, { Table } from "dexie";
-import { HexKey, NostrEvent, u256 } from "@snort/system";
+import { HexKey, NostrEvent, TaggedNostrEvent, u256 } from "@snort/system";
 
 export const NAME = "snortDB";
-export const VERSION = 11;
+export const VERSION = 14;
 
 export interface SubCache {
   id: string;
@@ -27,10 +27,21 @@ export interface Payment {
   macaroon: string;
 }
 
+export interface UnwrappedGift {
+  id: string;
+  to: string;
+  created_at: number;
+  inner: NostrEvent;
+  tags?: Array<Array<string>>; // some tags extracted
+}
+
 const STORES = {
   chats: "++id",
   eventInteraction: "++id",
   payments: "++url",
+  gifts: "++id",
+  notifications: "++id",
+  followsFeed: "++id, created_at, kind",
 };
 
 export class SnortDB extends Dexie {
@@ -38,6 +49,9 @@ export class SnortDB extends Dexie {
   chats!: Table<NostrEvent>;
   eventInteraction!: Table<EventInteraction>;
   payments!: Table<Payment>;
+  gifts!: Table<UnwrappedGift>;
+  notifications!: Table<NostrEvent>;
+  followsFeed!: Table<TaggedNostrEvent>;
 
   constructor() {
     super(NAME);

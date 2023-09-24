@@ -1,6 +1,6 @@
 import { useState, useMemo, ChangeEvent } from "react";
 import { FormattedMessage } from "react-intl";
-import { HexKey, TaggedRawEvent } from "@snort/system";
+import { HexKey, TaggedNostrEvent } from "@snort/system";
 
 import Note from "Element/Note";
 import useLogin from "Hooks/useLogin";
@@ -10,13 +10,13 @@ import messages from "./messages";
 
 interface BookmarksProps {
   pubkey: HexKey;
-  bookmarks: readonly TaggedRawEvent[];
-  related: readonly TaggedRawEvent[];
+  bookmarks: readonly TaggedNostrEvent[];
+  related: readonly TaggedNostrEvent[];
 }
 
 const Bookmarks = ({ pubkey, bookmarks, related }: BookmarksProps) => {
   const [onlyPubkey, setOnlyPubkey] = useState<HexKey | "all">("all");
-  const loginPubKey = useLogin().publicKey;
+  const { publicKey } = useLogin(s => ({ publicKey: s.publicKey }));
   const ps = useMemo(() => {
     return [...new Set(bookmarks.map(ev => ev.pubkey))];
   }, [bookmarks]);
@@ -47,7 +47,7 @@ const Bookmarks = ({ pubkey, bookmarks, related }: BookmarksProps) => {
               key={n.id}
               data={n}
               related={related}
-              options={{ showTime: false, showBookmarked: true, canUnbookmark: loginPubKey === pubkey }}
+              options={{ showTime: false, showBookmarked: true, canUnbookmark: publicKey === pubkey }}
             />
           );
         })}

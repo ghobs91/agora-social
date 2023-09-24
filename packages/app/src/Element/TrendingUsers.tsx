@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { HexKey } from "@snort/system";
-import { FormattedMessage } from "react-intl";
 
 import FollowListBase from "Element/FollowListBase";
 import PageSpinner from "Element/PageSpinner";
@@ -23,11 +22,8 @@ export default function TrendingUsers() {
   if (!userList) return <PageSpinner />;
 
   return (
-    <>
-      <h3>
-        <FormattedMessage defaultMessage="Trending People" />
-      </h3>
+    <div className="p">
       <FollowListBase pubkeys={userList} showAbout={true} />
-    </>
+    </div>
   );
 }

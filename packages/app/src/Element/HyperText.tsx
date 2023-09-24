@@ -1,7 +1,6 @@
 import { TwitterTweetEmbed } from "react-twitter-embed";
 
 import {
-  FileExtensionRegex,
   YoutubeUrlRegex,
   TweetUrlRegex,
   TidalRegex,
@@ -23,17 +22,15 @@ import AppleMusicEmbed from "Element/AppleMusicEmbed";
 import WavlakeEmbed from "Element/WavlakeEmbed";
 import LinkPreview from "Element/LinkPreview";
 import NostrLink from "Element/NostrLink";
-import RevealMedia from "Element/RevealMedia";
 import MagnetLink from "Element/MagnetLink";
 
 interface HypeTextProps {
   link: string;
-  creator: string;
   depth?: number;
-  disableMediaSpotlight?: boolean;
+  showLinkPreview?: boolean;
 }
 
-export default function HyperText({ link, creator, depth, disableMediaSpotlight }: HypeTextProps) {
+export default function HyperText({ link, depth, showLinkPreview }: HypeTextProps) {
   const a = link;
   try {
     const url = new URL(a);
@@ -47,10 +44,7 @@ export default function HyperText({ link, creator, depth, disableMediaSpotlight 
     const isAppleMusicLink = AppleMusicRegex.test(a);
     const isNostrNestsLink = NostrNestsRegex.test(a);
     const isWavlakeLink = WavlakeRegex.test(a);
-    const extension = FileExtensionRegex.test(url.pathname.toLowerCase()) && RegExp.$1;
-    if (extension && !isAppleMusicLink) {
-      return <RevealMedia link={a} creator={creator} disableSpotlight={disableMediaSpotlight} />;
-    } else if (tweetId) {
+    if (tweetId) {
       return (
         <div className="tweet" key={tweetId}>
           <TwitterTweetEmbed tweetId={tweetId} />
@@ -98,7 +92,7 @@ export default function HyperText({ link, creator, depth, disableMediaSpotlight 
       if (parsed) {
         return <MagnetLink magnet={parsed} />;
       }
-    } else {
+    } else if (showLinkPreview ?? true) {
       return <LinkPreview url={a} />;
     }
   } catch {

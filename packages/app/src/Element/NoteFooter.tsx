@@ -1,38 +1,25 @@
-import React, { useEffect, useState } from "react";
-import { useSelector, useDispatch } from "react-redux";
-import { useIntl, FormattedMessage } from "react-intl";
-import { Menu, MenuItem } from "@szhsin/react-menu";
+import React, { HTMLProps, useContext, useEffect, useState } from "react";
+import { useIntl } from "react-intl";
 import { useLongPress } from "use-long-press";
-import { TaggedRawEvent, HexKey, u256, encodeTLV, NostrPrefix, Lists, ParsedZap } from "@snort/system";
-import { LNURL } from "@snort/shared";
-import { useUserProfile } from "@snort/system-react";
-
-import Icon from "Icons/Icon";
-import Spinner from "Icons/Spinner";
+import { TaggedNostrEvent, ParsedZap, countLeadingZeros, NostrLink } from "@snort/system";
+import { SnortContext, useUserProfile } from "@snort/system-react";
 
 import { formatShort } from "Number";
-import useEventPublisher from "Feed/EventPublisher";
-import { delay, normalizeReaction, unwrap } from "SnortUtils";
+import useEventPublisher from "Hooks/useEventPublisher";
+import { delay, findTag, normalizeReaction } from "SnortUtils";
 import { NoteCreator } from "Element/NoteCreator";
-import { ReBroadcaster } from "Element/ReBroadcaster";
-import Reactions from "Element/Reactions";
 import SendSats from "Element/SendSats";
 import { ZapsSummary } from "Element/Zap";
-import { RootState } from "State/Store";
-import { setReplyTo, setShow, reset } from "State/NoteCreator";
-import {
-  setNote as setReBroadcastNote,
-  setShow as setReBroadcastShow,
-  reset as resetReBroadcast,
-} from "State/ReBroadcast";
-import useModeration from "Hooks/useModeration";
-import { TranslateHost } from "Const";
+import { AsyncIcon } from "Element/AsyncIcon";
+
 import { useWallet } from "Wallet";
 import useLogin from "Hooks/useLogin";
-import { setBookmarked, setPinned } from "Login";
 import { useInteractionCache } from "Hooks/useInteractionCache";
 import { ZapPoolController } from "ZapPoolController";
 import { System } from "index";
+import { Zapper, ZapTarget } from "Zapper";
+import { getDisplayName } from "./ProfileImage";
+import { useNoteCreator } from "State/NoteCreator";
 
 import messages from "./messages";
 
@@ -49,49 +36,34 @@ const barrierZapper = async <T,>(then: () => Promise<T>): Promise<T> => {
   }
 };
 
-export interface Translation {
-  text: string;
-  fromLanguage: string;
-  confidence: number;
-}
-
 export interface NoteFooterProps {
-  reposts: TaggedRawEvent[];
+  reposts: TaggedNostrEvent[];
   zaps: ParsedZap[];
-  positive: TaggedRawEvent[];
-  negative: TaggedRawEvent[];
-  showReactions: boolean;
-  setShowReactions(b: boolean): void;
-  ev: TaggedRawEvent;
-  onTranslated?: (content: Translation) => void;
+  positive: TaggedNostrEvent[];
+  ev: TaggedNostrEvent;
 }
 
 export default function NoteFooter(props: NoteFooterProps) {
-  const { ev, showReactions, setShowReactions, positive, negative, reposts, zaps } = props;
-  const dispatch = useDispatch();
+  const { ev, positive, reposts, zaps } = props;
+  const system = useContext(SnortContext);
   const { formatMessage } = useIntl();
-  const login = useLogin();
-  const { pinned, bookmarked, publicKey, preferences: prefs, relays } = login;
-  const { mute, block } = useModeration();
-  const author = useUserProfile(System, ev.pubkey);
+  const {
+    publicKey,
+    preferences: prefs,
+    readonly,
+  } = useLogin(s => ({ preferences: s.preferences, publicKey: s.publicKey, readonly: s.readonly }));
+  const author = useUserProfile(ev.pubkey);
   const interactionCache = useInteractionCache(publicKey, ev.id);
   const publisher = useEventPublisher();
-  const showNoteCreatorModal = useSelector((s: RootState) => s.noteCreator.show);
-  const showReBroadcastModal = useSelector((s: RootState) => s.reBroadcast.show);
-  const reBroadcastNote = useSelector((s: RootState) => s.reBroadcast.note);
-  const replyTo = useSelector((s: RootState) => s.noteCreator.replyTo);
-  const willRenderNoteCreator = showNoteCreatorModal && replyTo?.id === ev.id;
-  const willRenderReBroadcast = showReBroadcastModal && reBroadcastNote && reBroadcastNote?.id === ev.id;
+  const note = useNoteCreator(n => ({ show: n.show, replyTo: n.replyTo, update: n.update }));
+  const willRenderNoteCreator = note.show && note.replyTo?.id === ev.id;
   const [tip, setTip] = useState(false);
   const [zapping, setZapping] = useState(false);
   const walletState = useWallet();
   const wallet = walletState.wallet;
 
+  const canFastZap = wallet?.isReady() && !readonly;
   const isMine = ev.pubkey === publicKey;
-  const lang = window.navigator.language;
-  const langNames = new Intl.DisplayNames([...window.navigator.languages], {
-    type: "language",
-  });
   const zapTotal = zaps.reduce((acc, z) => acc + z.amount, 0);
   const didZap = interactionCache.data.zapped || zaps.some(a => a.sender === publicKey);
   const longPress = useLongPress(
@@ -101,7 +73,7 @@ export default function NoteFooter(props: NoteFooterProps) {
     },
     {
       captureEvent: true,
-    }
+    },
   );
 
   function hasReacted(emoji: string) {
@@ -123,13 +95,6 @@ export default function NoteFooter(props: NoteFooterProps) {
     }
   }
 
-  async function deleteEvent() {
-    if (window.confirm(formatMessage(messages.ConfirmDeletion, { id: ev.id.substring(0, 8) })) && publisher) {
-      const evDelete = await publisher.delete(ev.id);
-      System.BroadcastEvent(evDelete);
-    }
-  }
-
   async function repost() {
     if (!hasReposted() && publisher) {
       if (!prefs.confirmReposts || window.confirm(formatMessage(messages.ConfirmRepost, { id: ev.id }))) {
@@ -140,27 +105,36 @@ export default function NoteFooter(props: NoteFooterProps) {
     }
   }
 
-  function getLNURL() {
-    return ev.tags.find(a => a[0] === "zap")?.[1] || author?.lud16 || author?.lud06;
-  }
+  function getZapTarget(): Array<ZapTarget> | undefined {
+    if (ev.tags.some(v => v[0] === "zap")) {
+      return Zapper.fromEvent(ev);
+    }
 
-  function getTargetName() {
-    const zapTarget = ev.tags.find(a => a[0] === "zap")?.[1];
-    if (zapTarget) {
-      return new LNURL(zapTarget).name;
-    } else {
-      return author?.display_name || author?.name;
+    const authorTarget = author?.lud16 || author?.lud06;
+    if (authorTarget) {
+      return [
+        {
+          type: "lnurl",
+          value: authorTarget,
+          weight: 1,
+          name: getDisplayName(author, ev.pubkey),
+          zap: {
+            pubkey: ev.pubkey,
+            event: NostrLink.fromEvent(ev),
+          },
+        } as ZapTarget,
+      ];
     }
   }
 
   async function fastZap(e?: React.MouseEvent) {
     if (zapping || e?.isPropagationStopped()) return;
 
-    const lnurl = getLNURL();
-    if (wallet?.isReady() && lnurl) {
+    const lnurl = getZapTarget();
+    if (canFastZap && lnurl) {
       setZapping(true);
       try {
-        await fastZapInner(lnurl, prefs.defaultZapAmount, ev.pubkey, ev.id);
+        await fastZapInner(lnurl, prefs.defaultZapAmount);
       } catch (e) {
         console.warn("Fast zap failed", e);
         if (!(e instanceof Error) || e.message !== "User rejected") {
@@ -174,30 +148,29 @@ export default function NoteFooter(props: NoteFooterProps) {
     }
   }
 
-  async function fastZapInner(lnurl: string, amount: number, key: HexKey, id?: u256) {
-    // only allow 1 invoice req/payment at a time to avoid hitting rate limits
-    await barrierZapper(async () => {
-      const handler = new LNURL(lnurl);
-      await handler.load();
-
-      const zr = Object.keys(relays.item);
-      const zap = handler.canZap && publisher ? await publisher.zap(amount * 1000, key, zr, id) : undefined;
-      const invoice = await handler.getInvoice(amount, undefined, zap);
-      await wallet?.payInvoice(unwrap(invoice.pr));
-      ZapPoolController.allocate(amount);
-
-      await interactionCache.zap();
-    });
+  async function fastZapInner(targets: Array<ZapTarget>, amount: number) {
+    if (wallet) {
+      // only allow 1 invoice req/payment at a time to avoid hitting rate limits
+      await barrierZapper(async () => {
+        const zapper = new Zapper(system, publisher);
+        const result = await zapper.send(wallet, targets, amount);
+        const totalSent = result.reduce((acc, v) => (acc += v.sent), 0);
+        if (totalSent > 0) {
+          ZapPoolController.allocate(totalSent);
+          await interactionCache.zap();
+        }
+      });
+    }
   }
 
   useEffect(() => {
     if (prefs.autoZap && !didZap && !isMine && !zapping) {
-      const lnurl = getLNURL();
+      const lnurl = getZapTarget();
       if (wallet?.isReady() && lnurl) {
         setZapping(true);
         queueMicrotask(async () => {
           try {
-            await fastZapInner(lnurl, prefs.defaultZapAmount, ev.pubkey, ev.id);
+            await fastZapInner(lnurl, prefs.defaultZapAmount);
           } catch {
             // ignored
           } finally {
@@ -208,246 +181,124 @@ export default function NoteFooter(props: NoteFooterProps) {
     }
   }, [prefs.autoZap, author, zapping]);
 
-  function tipButton() {
-    const service = getLNURL();
-    if (service) {
+  function powIcon() {
+    const pow = findTag(ev, "nonce") ? countLeadingZeros(ev.id) : undefined;
+    if (pow) {
       return (
-        <>
-          <div className={`reaction-pill ${didZap ? "reacted" : ""}`} {...longPress()} onClick={e => fastZap(e)}>
-            {zapping ? <Spinner /> : wallet?.isReady() ? <Icon name="zapFast" /> : <Icon name="zap" />}
-            {zapTotal > 0 && <div className="reaction-pill-number">{formatShort(zapTotal)}</div>}
-          </div>
-        </>
+        <AsyncFooterIcon title={formatMessage({ defaultMessage: "Proof of Work" })} iconName="diamond" value={pow} />
+      );
+    }
+  }
+
+  function tipButton() {
+    const targets = getZapTarget();
+    if (targets) {
+      return (
+        <AsyncFooterIcon
+          className={didZap ? "reacted" : ""}
+          {...longPress()}
+          title={formatMessage({ defaultMessage: "Zap" })}
+          iconName={canFastZap ? "zapFast" : "zap"}
+          value={zapTotal}
+          onClick={e => fastZap(e)}
+        />
       );
     }
     return null;
   }
 
   function repostIcon() {
+    if (readonly) return;
     return (
-      <div className={`reaction-pill ${hasReposted() ? "reacted" : ""}`} onClick={() => repost()}>
-        <Icon name="repost" size={17} />
-        {reposts.length > 0 && <div className="reaction-pill-number">{formatShort(reposts.length)}</div>}
-      </div>
+      <AsyncFooterIcon
+        className={hasReposted() ? "reacted" : ""}
+        iconName="repeat"
+        title={formatMessage({ defaultMessage: "Repost" })}
+        value={reposts.length}
+        onClick={async () => {
+          if (readonly) return;
+          await repost();
+        }}
+      />
     );
   }
 
-  function reactionIcons() {
+  function reactionIcon() {
     if (!prefs.enableReactions) {
       return null;
     }
+    const reacted = hasReacted("+");
     return (
-      <>
-        <div
-          className={`reaction-pill ${hasReacted("+") ? "reacted" : ""} `}
-          onClick={() => react(prefs.reactionEmoji)}>
-          <Icon name="heart" />
-          <div className="reaction-pill-number">{formatShort(positive.length)}</div>
-        </div>
-      </>
+      <AsyncFooterIcon
+        className={reacted ? "reacted" : ""}
+        iconName={reacted ? "heart-solid" : "heart"}
+        title={formatMessage({ defaultMessage: "Like" })}
+        value={positive.length}
+        onClick={async () => {
+          if (readonly) return;
+          await react(prefs.reactionEmoji);
+        }}
+      />
     );
   }
 
-  async function share() {
-    const link = encodeTLV(NostrPrefix.Event, ev.id, ev.relays);
-    const url = `${window.location.protocol}//${window.location.host}/e/${link}`;
-    if ("share" in window.navigator) {
-      await window.navigator.share({
-        title: "Snort",
-        url: url,
-      });
-    } else {
-      await navigator.clipboard.writeText(url);
-    }
-  }
-
-  async function translate() {
-    const res = await fetch(`${TranslateHost}/translate`, {
-      method: "POST",
-      body: JSON.stringify({
-        q: ev.content,
-        source: "auto",
-        target: lang.split("-")[0],
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (res.ok) {
-      const result = await res.json();
-      if (typeof props.onTranslated === "function" && result) {
-        props.onTranslated({
-          text: result.translatedText,
-          fromLanguage: langNames.of(result.detectedLanguage.language),
-          confidence: result.detectedLanguage.confidence,
-        } as Translation);
-      }
-    }
-  }
-
-  async function copyId() {
-    const link = encodeTLV(NostrPrefix.Event, ev.id, ev.relays);
-    await navigator.clipboard.writeText(link);
-  }
-
-  async function pin(id: HexKey) {
-    if (publisher) {
-      const es = [...pinned.item, id];
-      const ev = await publisher.noteList(es, Lists.Pinned);
-      System.BroadcastEvent(ev);
-      setPinned(login, es, ev.created_at * 1000);
-    }
-  }
-
-  async function bookmark(id: HexKey) {
-    if (publisher) {
-      const es = [...bookmarked.item, id];
-      const ev = await publisher.noteList(es, Lists.Bookmarked);
-      System.BroadcastEvent(ev);
-      setBookmarked(login, es, ev.created_at * 1000);
-    }
-  }
-
-  async function copyEvent() {
-    await navigator.clipboard.writeText(JSON.stringify(ev, undefined, "  "));
-  }
-
-  function menuItems() {
+  function replyIcon() {
+    if (readonly) return;
     return (
-      <>
-        <div className="close-menu-container">
-          {/* This menu item serves as a "close menu" button;
-          it allows the user to click anywhere nearby the menu to close it. */}
-          <MenuItem>
-            <div className="close-menu" />
-          </MenuItem>
-        </div>
-        <MenuItem onClick={() => setShowReactions(true)}>
-          <Icon name="heart" />
-          <FormattedMessage {...messages.Reactions} />
-        </MenuItem>
-        <MenuItem onClick={() => share()}>
-          <Icon name="share" />
-          <FormattedMessage {...messages.Share} />
-        </MenuItem>
-        {!pinned.item.includes(ev.id) && (
-          <MenuItem onClick={() => pin(ev.id)}>
-            <Icon name="pin" />
-            <FormattedMessage {...messages.Pin} />
-          </MenuItem>
-        )}
-        {!bookmarked.item.includes(ev.id) && (
-          <MenuItem onClick={() => bookmark(ev.id)}>
-            <Icon name="bookmark" />
-            <FormattedMessage {...messages.Bookmark} />
-          </MenuItem>
-        )}
-        <MenuItem onClick={() => copyId()}>
-          <Icon name="copy" />
-          <FormattedMessage {...messages.CopyID} />
-        </MenuItem>
-        <MenuItem onClick={() => mute(ev.pubkey)}>
-          <Icon name="mute" />
-          <FormattedMessage {...messages.Mute} />
-        </MenuItem>
-        {prefs.enableReactions && (
-          <MenuItem onClick={() => react("-")}>
-            <Icon name="dislike" />
-            <FormattedMessage {...messages.DislikeAction} />
-          </MenuItem>
-        )}
-        {ev.pubkey === publicKey && (
-          <MenuItem onClick={handleReBroadcastButtonClick}>
-            <Icon name="relay" />
-            <FormattedMessage {...messages.ReBroadcast} />
-          </MenuItem>
-        )}
-        {ev.pubkey !== publicKey && (
-          <MenuItem onClick={() => block(ev.pubkey)}>
-            <Icon name="block" />
-            <FormattedMessage {...messages.Block} />
-          </MenuItem>
-        )}
-        <MenuItem onClick={() => translate()}>
-          <Icon name="translate" />
-          <FormattedMessage {...messages.TranslateTo} values={{ lang: langNames.of(lang.split("-")[0]) }} />
-        </MenuItem>
-        {prefs.showDebugMenus && (
-          <MenuItem onClick={() => copyEvent()}>
-            <Icon name="json" />
-            <FormattedMessage {...messages.CopyJSON} />
-          </MenuItem>
-        )}
-        {isMine && (
-          <MenuItem onClick={() => deleteEvent()}>
-            <Icon name="trash" className="red" />
-            <FormattedMessage {...messages.Delete} />
-          </MenuItem>
-        )}
-      </>
+      <AsyncFooterIcon
+        className={note.show ? "reacted" : ""}
+        iconName="reply"
+        title={formatMessage({ defaultMessage: "Reply" })}
+        value={0}
+        onClick={async () => handleReplyButtonClick()}
+      />
     );
   }
 
   const handleReplyButtonClick = () => {
-    if (replyTo?.id !== ev.id) {
-      dispatch(reset());
-    }
-
-    dispatch(setReplyTo(ev));
-    dispatch(setShow(!showNoteCreatorModal));
-  };
-
-  const handleReBroadcastButtonClick = () => {
-    if (reBroadcastNote?.id !== ev.id) {
-      dispatch(resetReBroadcast());
-    }
-
-    dispatch(setReBroadcastNote(ev));
-    dispatch(setReBroadcastShow(!showReBroadcastModal));
+    note.update(v => {
+      if (v.replyTo?.id !== ev.id) {
+        v.reset();
+      }
+      v.show = true;
+      v.replyTo = ev;
+    });
   };
 
   return (
     <>
       <div className="footer">
         <div className="footer-reactions">
-          {tipButton()}
-          {reactionIcons()}
+          {replyIcon()}
           {repostIcon()}
-          <div className={`reaction-pill ${showNoteCreatorModal ? "reacted" : ""}`} onClick={handleReplyButtonClick}>
-            <Icon name="reply" size={17} />
-          </div>
-          <Menu
-            menuButton={
-              <div className="reaction-pill">
-                <Icon name="dots" size={15} />
-              </div>
-            }
-            menuClassName="ctx-menu">
-            {menuItems()}
-          </Menu>
+          {reactionIcon()}
+          {tipButton()}
+          {powIcon()}
         </div>
-        {willRenderNoteCreator && <NoteCreator />}
-        {willRenderReBroadcast && <ReBroadcaster />}
-        <Reactions
-          show={showReactions}
-          setShow={setShowReactions}
-          positive={positive}
-          negative={negative}
-          reposts={reposts}
-          zaps={zaps}
-        />
-        <SendSats
-          lnurl={getLNURL()}
-          onClose={() => setTip(false)}
-          show={tip}
-          author={author?.pubkey}
-          target={getTargetName()}
-          note={ev.id}
-          allocatePool={true}
-        />
+        {willRenderNoteCreator && <NoteCreator key={`note-creator-${ev.id}`} />}
+        <SendSats targets={getZapTarget()} onClose={() => setTip(false)} show={tip} note={ev.id} allocatePool={true} />
       </div>
-      <div className="zaps-container">
-        <ZapsSummary zaps={zaps} />
-      </div>
+      <ZapsSummary zaps={zaps} />
     </>
+  );
+}
+
+interface AsyncFooterIconProps extends HTMLProps<HTMLDivElement> {
+  iconName: string;
+  value: number;
+  loading?: boolean;
+  onClick?: (e: React.MouseEvent<HTMLDivElement>) => Promise<void>;
+}
+
+function AsyncFooterIcon(props: AsyncFooterIconProps) {
+  const mergedProps = {
+    ...props,
+    iconSize: 18,
+    className: `reaction-pill${props.className ? ` ${props.className}` : ""}`,
+  };
+  return (
+    <AsyncIcon {...mergedProps}>
+      {props.value > 0 && <div className="reaction-pill-number">{formatShort(props.value)}</div>}
+    </AsyncIcon>
   );
 }

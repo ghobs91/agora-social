@@ -29,7 +29,7 @@ const ConnectLNDHub = () => {
       } as WalletConfig;
       Wallets.add(newWallet);
 
-      navigate("/wallet");
+      navigate("/settings/wallet");
     } catch (e) {
       if (e instanceof Error) {
         setError((e as Error).message);
@@ -37,7 +37,7 @@ const ConnectLNDHub = () => {
         setError(
           formatMessage({
             defaultMessage: "Unknown error",
-          })
+          }),
         );
       }
     }

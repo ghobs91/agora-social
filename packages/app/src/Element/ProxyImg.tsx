@@ -1,5 +1,5 @@
 import useImgProxy from "Hooks/useImgProxy";
-import { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { getUrlHostname } from "SnortUtils";
 
@@ -36,6 +36,8 @@ export const ProxyImg = (props: ProxyImgProps) => {
     <img
       {...props}
       src={props.src ? proxy(props.src, props.size) : ""}
+      width={props.size}
+      height={props.size}
       onError={e => {
         if (props.onError) {
           props.onError(e);

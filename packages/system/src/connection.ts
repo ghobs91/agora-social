@@ -1,10 +1,11 @@
 import { v4 as uuid } from "uuid";
 import debug from "debug";
+import WebSocket from "isomorphic-ws";
 import { unwrap, ExternalStore, unixNowMs } from "@snort/shared";
 
 import { DefaultConnectTimeout } from "./const";
 import { ConnectionStats } from "./connection-stats";
-import { NostrEvent, ReqCommand, TaggedRawEvent, u256 } from "./nostr";
+import { NostrEvent, ReqCommand, TaggedNostrEvent, u256 } from "./nostr";
 import { RelayInfo } from "./relay-info";
 
 export type AuthHandler = (challenge: string, relay: string) => Promise<NostrEvent | undefined>;
@@ -62,7 +63,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
   ReconnectTimer?: ReturnType<typeof setTimeout>;
   EventsCallback: Map<u256, (msg: boolean[]) => void>;
   OnConnected?: (wasReconnect: boolean) => void;
-  OnEvent?: (sub: string, e: TaggedRawEvent) => void;
+  OnEvent?: (sub: string, e: TaggedNostrEvent) => void;
   OnEose?: (sub: string) => void;
   OnDisconnect?: (code: number) => void;
   Auth?: AuthHandler;
@@ -138,7 +139,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
     this.#sendPendingRaw();
   }
 
-  OnClose(e: CloseEvent) {
+  OnClose(e: WebSocket.CloseEvent) {
     if (this.ReconnectTimer) {
       clearTimeout(this.ReconnectTimer);
       this.ReconnectTimer = undefined;
@@ -153,7 +154,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
       this.#log(
         `[${this.Address}] Closed (code=${e.code}), trying again in ${(this.ConnectTimeout / 1000)
           .toFixed(0)
-          .toLocaleString()} sec`
+          .toLocaleString()} sec`,
       );
       this.ReconnectTimer = setTimeout(() => {
         this.Connect();
@@ -171,10 +172,10 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
     this.notifyChange();
   }
 
-  OnMessage(e: MessageEvent) {
+  OnMessage(e: WebSocket.MessageEvent) {
     this.#activity = unixNowMs();
-    if (e.data.length > 0) {
-      const msg = JSON.parse(e.data);
+    if ((e.data as string).length > 0) {
+      const msg = JSON.parse(e.data as string);
       const tag = msg[0];
       switch (tag) {
         case "AUTH": {
@@ -221,7 +222,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
     }
   }
 
-  OnError(e: Event) {
+  OnError(e: WebSocket.Event) {
     this.#log("Error: %O", e);
     this.notifyChange();
   }
@@ -383,12 +384,12 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
     }
     this.AwaitingAuth.set(challenge, true);
     const authEvent = await this.Auth(challenge, this.Address);
-    return new Promise(resolve => {
-      if (!authEvent) {
-        authCleanup();
-        return Promise.reject("no event");
-      }
+    if (!authEvent) {
+      authCleanup();
+      throw new Error("No auth event");
+    }
 
+    return await new Promise(resolve => {
       const t = setTimeout(() => {
         authCleanup();
         resolve();
@@ -425,7 +426,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
               "%s Inactive connection has %d active requests! %O",
               this.Address,
               this.ActiveRequests.size,
-              this.ActiveRequests
+              this.ActiveRequests,
             );
           } else {
             this.Close();

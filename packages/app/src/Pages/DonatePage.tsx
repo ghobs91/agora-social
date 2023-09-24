@@ -45,6 +45,10 @@ const Translators = [
   bech32ToHex("npub19jk45jz45gczwfm22y9z69xhaex3nwg47dz84zw096xl6z62amkqj99rv7"), // Pextar - SV
 
   bech32ToHex("npub1z9n5ktfjrlpyywds9t7ljekr9cm9jjnzs27h702te5fy8p2c4dgs5zvycf"), // Felix - DE
+
+  bech32ToHex("npub1wh30wunfpkezx5s7edqu9g0s0raeetf5dgthzm0zw7sk8wqygmjqqfljgh"), // Fernando Porazzi - pt-BR
+
+  bech32ToHex("npub1ust7u0v3qffejwhqee45r49zgcyewrcn99vdwkednd356c9resyqtnn3mj"), // Petri - FI
 ];
 
 export const DonateLNURL = "donate@snort.social";
@@ -74,7 +78,7 @@ const DonatePage = () => {
   }
 
   return (
-    <div className="main-content m5">
+    <div className="main-content p">
       <h2>
         <FormattedMessage defaultMessage="Help fund the development of Snort" />
       </h2>

@@ -3,7 +3,7 @@ import { FormattedMessage } from "react-intl";
 import { Link, useNavigate } from "react-router-dom";
 
 import PageSpinner from "Element/PageSpinner";
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import SnortApi, { Subscription, SubscriptionError } from "SnortApi";
 import { mapSubscriptionErrorCode } from ".";
 import SubscriptionCard from "./SubscriptionCard";
@@ -33,7 +33,7 @@ export default function ManageSubscriptionPage() {
     return <PageSpinner />;
   }
   return (
-    <>
+    <div className="main-content p flex-column g16">
       <h2>
         <FormattedMessage defaultMessage="Subscriptions" />
       </h2>
@@ -41,7 +41,7 @@ export default function ManageSubscriptionPage() {
         <SubscriptionCard sub={a} key={a.id} />
       ))}
       {subs.length !== 0 && (
-        <button onClick={() => navigate("/subscribe")}>
+        <button className="primary" onClick={() => navigate("/subscribe")}>
           <FormattedMessage defaultMessage="Buy Subscription" />
         </button>
       )}
@@ -60,6 +60,6 @@ export default function ManageSubscriptionPage() {
         </p>
       )}
       {error && <b className="error">{mapSubscriptionErrorCode(error)}</b>}
-    </>
+    </div>
   );
 }

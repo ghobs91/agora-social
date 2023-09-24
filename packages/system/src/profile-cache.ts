@@ -1,6 +1,6 @@
 import debug from "debug";
 import { unixNowMs, FeedCache } from "@snort/shared";
-import { EventKind, HexKey, SystemInterface, TaggedRawEvent, NoteCollection, RequestBuilder } from ".";
+import { EventKind, HexKey, SystemInterface, TaggedNostrEvent, NoteCollection, RequestBuilder } from ".";
 import { ProfileCacheExpire } from "./const";
 import { mapEventToProfile, MetadataCache } from "./cache";
 
@@ -37,13 +37,11 @@ export class ProfileLoaderService {
    * Request profile metadata for a set of pubkeys
    */
   TrackMetadata(pk: HexKey | Array<HexKey>) {
-    const bufferNow = [];
     for (const p of Array.isArray(pk) ? pk : [pk]) {
-      if (p.length === 64 && this.#wantsMetadata.add(p)) {
-        bufferNow.push(p);
+      if (p.length === 64) {
+        this.#wantsMetadata.add(p);
       }
     }
-    this.#cache.buffer(bufferNow);
   }
 
   /**
@@ -57,10 +55,29 @@ export class ProfileLoaderService {
     }
   }
 
-  async onProfileEvent(e: Readonly<TaggedRawEvent>) {
+  async onProfileEvent(e: Readonly<TaggedNostrEvent>) {
     const profile = mapEventToProfile(e);
     if (profile) {
       await this.#cache.update(profile);
+    }
+  }
+
+  async fetchProfile(key: string) {
+    const existing = this.Cache.get(key);
+    if (existing) {
+      return existing;
+    } else {
+      return await new Promise<MetadataCache>((resolve, reject) => {
+        this.TrackMetadata(key);
+        const release = this.Cache.hook(() => {
+          const existing = this.Cache.getFromCache(key);
+          if (existing) {
+            resolve(existing);
+            release();
+            this.UntrackMetadata(key);
+          }
+        }, key);
+      });
     }
   }
 
@@ -101,7 +118,7 @@ export class ProfileLoaderService {
           await this.onProfileEvent(pe);
         }
       });
-      const results = await new Promise<Readonly<Array<TaggedRawEvent>>>(resolve => {
+      const results = await new Promise<Readonly<Array<TaggedNostrEvent>>>(resolve => {
         let timeout: ReturnType<typeof setTimeout> | undefined = undefined;
         const release = feed.hook(() => {
           if (!feed.loading) {
@@ -128,7 +145,7 @@ export class ProfileLoaderService {
             pubkey: a,
             loaded: unixNowMs() - ProfileCacheExpire + 30_000, // expire in 30s
             created: 69,
-          } as MetadataCache)
+          } as MetadataCache),
         );
         await Promise.all(empty);
       }

@@ -1,4 +1,4 @@
-import { HexKey, RelaySettings, u256, EventPublisher } from "@snort/system";
+import { HexKey, RelaySettings, u256, PinEncrypted, PinEncryptedPayload } from "@snort/system";
 import { UserPreferences } from "Login";
 import { SubscriptionEvent } from "Subscription";
 
@@ -15,9 +15,15 @@ export enum LoginSessionType {
   PublicKey = "public_key",
   Nip7 = "nip7",
   Nip46 = "nip46",
+  Nip7os = "nip7_os",
 }
 
 export interface LoginSession {
+  /**
+   * Unique ID to identify this session
+   */
+  id: string;
+
   /**
    * Type of login session
    */
@@ -25,8 +31,19 @@ export interface LoginSession {
 
   /**
    * Current user private key
+   * @deprecated Moving to pin encrypted storage
    */
   privateKey?: HexKey;
+
+  /**
+   * If this session cannot sign events
+   */
+  readonly: boolean;
+
+  /**
+   * Encrypted private key
+   */
+  privateKeyData?: PinEncrypted | PinEncryptedPayload;
 
   /**
    * BIP39-generated, hex-encoded entropy
@@ -97,9 +114,4 @@ export interface LoginSession {
    * Remote signer relays (NIP-46)
    */
   remoteSignerRelays?: Array<string>;
-
-  /**
-   * Instance event publisher
-   */
-  publisher?: EventPublisher;
 }

@@ -5,7 +5,7 @@ import { mapEventToProfile } from "@snort/system";
 import { useUserProfile } from "@snort/system-react";
 
 import Logo from "Element/Logo";
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import useLogin from "Hooks/useLogin";
 import { UserCache } from "Cache";
 import AvatarEditor from "Element/AvatarEditor";
@@ -16,7 +16,7 @@ import messages from "./messages";
 
 export default function ProfileSetup() {
   const login = useLogin();
-  const myProfile = useUserProfile(System, login.publicKey);
+  const myProfile = useUserProfile(login.publicKey);
   const [username, setUsername] = useState("");
   const [picture, setPicture] = useState("");
   const { formatMessage } = useIntl();
@@ -47,7 +47,7 @@ export default function ProfileSetup() {
   };
 
   return (
-    <div className="main-content new-user" dir="auto">
+    <div className="main-content new-user p" dir="auto">
       <Logo />
       <div className="progress-bar">
         <div className="progress progress-second"></div>

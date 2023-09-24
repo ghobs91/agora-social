@@ -8,7 +8,7 @@ import { formatShort } from "Number";
 import { LockedFeatures, Plans, SubscriptionType } from "Subscription";
 import ManageSubscriptionPage from "Pages/subscribe/ManageSubscription";
 import AsyncButton from "Element/AsyncButton";
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import SnortApi, { SubscriptionError, SubscriptionErrorCode } from "SnortApi";
 import SendSats from "Element/SendSats";
 
@@ -77,11 +77,11 @@ export function SubscribePage() {
 
   return (
     <>
-      <div className="flex subscribe-page">
+      <div className="flex subscribe-page main-content">
         {Plans.map(a => {
           const lower = Plans.filter(b => b.id < a.id);
           return (
-            <div className={`card flex f-col${a.disabled ? " disabled" : ""}`}>
+            <div className={`p flex-column${a.disabled ? " disabled" : ""}`}>
               <div className="f-grow">
                 <h2>{mapPlanName(a.id)}</h2>
                 <p>

@@ -2,18 +2,15 @@ import "./Timeline.css";
 import { FormattedMessage } from "react-intl";
 import { useCallback, useMemo } from "react";
 import { useInView } from "react-intersection-observer";
-import { TaggedRawEvent, EventKind, u256, parseZap } from "@snort/system";
+import { TaggedNostrEvent, EventKind, u256 } from "@snort/system";
 
 import Icon from "Icons/Icon";
-import { dedupeByPubkey, findTag, tagFilterOfTextRepost } from "SnortUtils";
+import { dedupeByPubkey, findTag } from "SnortUtils";
 import ProfileImage from "Element/ProfileImage";
 import useTimelineFeed, { TimelineFeed, TimelineSubject } from "Feed/TimelineFeed";
-import Zap from "Element/Zap";
 import Note from "Element/Note";
-import NoteReaction from "Element/NoteReaction";
 import useModeration from "Hooks/useModeration";
-import ProfilePreview from "Element/ProfilePreview";
-import { UserCache } from "Cache";
+import { LiveStreams } from "Element/LiveStreams";
 
 export interface TimelineProps {
   postsOnly: boolean;
@@ -27,7 +24,7 @@ export interface TimelineProps {
 }
 
 /**
- * A list of notes by pubkeys
+ * A list of notes by "subject"
  */
 const Timeline = (props: TimelineProps) => {
   const feedOptions = useMemo(() => {
@@ -43,14 +40,14 @@ const Timeline = (props: TimelineProps) => {
   const { ref, inView } = useInView();
 
   const filterPosts = useCallback(
-    (nts: readonly TaggedRawEvent[]) => {
-      const a = [...nts];
+    (nts: readonly TaggedNostrEvent[]) => {
+      const a = [...nts.filter(a => a.kind !== EventKind.LiveEvent)];
       props.noSort || a.sort((a, b) => b.created_at - a.created_at);
       return a
         ?.filter(a => (props.postsOnly ? !a.tags.some(b => b[0] === "e") : true))
         .filter(a => props.ignoreModeration || !isMuted(a.pubkey));
     },
-    [props.postsOnly, muted, props.ignoreModeration]
+    [props.postsOnly, muted, props.ignoreModeration],
   );
 
   const mainFeed = useMemo(() => {
@@ -63,45 +60,15 @@ const Timeline = (props: TimelineProps) => {
     (id: u256) => {
       return (feed.related ?? []).filter(a => findTag(a, "e") === id);
     },
-    [feed.related]
+    [feed.related],
   );
-  const findRelated = useCallback(
-    (id?: u256) => {
-      if (!id) return undefined;
-      return (feed.related ?? []).find(a => a.id === id);
-    },
-    [feed.related]
-  );
+  const liveStreams = useMemo(() => {
+    return (feed.main ?? []).filter(a => a.kind === EventKind.LiveEvent && findTag(a, "status") === "live");
+  }, [feed]);
+
   const latestAuthors = useMemo(() => {
     return dedupeByPubkey(latestFeed).map(e => e.pubkey);
   }, [latestFeed]);
-
-  function eventElement(e: TaggedRawEvent) {
-    switch (e.kind) {
-      case EventKind.SetMetadata: {
-        return <ProfilePreview actions={<></>} pubkey={e.pubkey} className="card" />;
-      }
-      case EventKind.Polls:
-      case EventKind.TextNote: {
-        const eRef = e.tags.find(tagFilterOfTextRepost(e))?.at(1);
-        if (eRef) {
-          return <NoteReaction data={e} key={e.id} root={findRelated(eRef)} />;
-        }
-        return (
-          <Note key={e.id} data={e} related={relatedFeed(e.id)} ignoreModeration={props.ignoreModeration} depth={0} />
-        );
-      }
-      case EventKind.ZapReceipt: {
-        const zap = parseZap(e, UserCache);
-        return zap.event ? null : <Zap zap={zap} key={e.id} />;
-      }
-      case EventKind.Reaction:
-      case EventKind.Repost: {
-        const eRef = findTag(e, "e");
-        return <NoteReaction data={e} key={e.id} root={findRelated(eRef)} />;
-      }
-    }
-  }
 
   function onShowLatest(scrollToTop = false) {
     feed.showLatest();
@@ -112,9 +79,10 @@ const Timeline = (props: TimelineProps) => {
 
   return (
     <>
+      <LiveStreams evs={liveStreams} />
       {latestFeed.length > 0 && (
         <>
-          <div className="card latest-notes pointer" onClick={() => onShowLatest()} ref={ref}>
+          <div className="card latest-notes" onClick={() => onShowLatest()} ref={ref}>
             {latestAuthors.slice(0, 3).map(p => {
               return <ProfileImage pubkey={p} showUsername={false} link={""} />;
             })}
@@ -138,7 +106,9 @@ const Timeline = (props: TimelineProps) => {
           )}
         </>
       )}
-      {mainFeed.map(eventElement)}
+      {mainFeed.map(e => (
+        <Note key={e.id} data={e} related={relatedFeed(e.id)} ignoreModeration={props.ignoreModeration} depth={0} />
+      ))}
       {(props.loadMore === undefined || props.loadMore === true) && (
         <div className="flex f-center">
           <button type="button" onClick={() => feed.loadMore()}>

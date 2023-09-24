@@ -15,30 +15,38 @@ Snort supports the following NIP's:
 - [x] NIP-09: Event Deletion
 - [x] NIP-10: Conventions for clients' use of `e` and `p` tags in text events
 - [x] NIP-11: Relay Information Document
-- [x] NIP-12: Generic Tag Queries
-- [ ] NIP-13: Proof of Work
+- [x] NIP-13: Proof of Work
 - [ ] NIP-14: Subject tag in text events
-- [x] NIP-15: End of Stored Events Notice
 - [x] NIP-18: Reposts
 - [x] NIP-19: bech32-encoded entities
-- [x] NIP-20: Command Results
 - [x] NIP-21: `nostr:` Protocol handler (`web+nostr`)
+- [x] NIP-23: Long form content
 - [x] NIP-25: Reactions
 - [x] NIP-26: Delegated Event Signing (Display delegated signings only)
-- [x] NIP-27: Text note references (Parsing only)
+- [x] NIP-27: Text note references
 - [ ] NIP-28: Public Chat
 - [x] NIP-30: Custom Emoji
+- [x] NIP-31: Alt tag for unknown events
 - [x] NIP-36: Sensitive Content
+- [x] NIP-38: User Statuses
+- [ ] NIP-39: External Identities
 - [ ] NIP-40: Expiration Timestamp
 - [x] NIP-42: Authentication of clients to relays
 - [x] NIP-44: Versioned encryption
+- [x] NIP-46: Nostr connect (+bunker)
+- [x] NIP-47: Nostr wallet connect
 - [x] NIP-50: Search
 - [x] NIP-51: Lists
+- [x] NIP-53: Live Events
+- [x] NIP-57: Zaps
 - [x] NIP-58: Badges
 - [x] NIP-59: Gift Wrap
 - [x] NIP-65: Relay List Metadata
+- [x] NIP-75: Zap Goals
 - [ ] NIP-78: App specific data
-- [x] NIP-102: Live Events
+- [ ] NIP-89: App handlers
+- [x] NIP-94: File Metadata
+- [x] NIP-98: HTTP Auth
 
 ### Running
 

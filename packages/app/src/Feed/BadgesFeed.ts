@@ -1,9 +1,8 @@
 import { useMemo } from "react";
-import { EventKind, HexKey, Lists, RequestBuilder, FlatNoteStore, ReplaceableNoteStore } from "@snort/system";
+import { EventKind, HexKey, Lists, RequestBuilder, ReplaceableNoteStore, NoteCollection } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
 
 import { unwrap, findTag, chunks } from "SnortUtils";
-import { System } from "index";
 
 type BadgeAwards = {
   pubkeys: string[];
@@ -18,13 +17,13 @@ export default function useProfileBadges(pubkey?: HexKey) {
     return b;
   }, [pubkey]);
 
-  const profileBadges = useRequestBuilder<ReplaceableNoteStore>(System, ReplaceableNoteStore, sub);
+  const profileBadges = useRequestBuilder(ReplaceableNoteStore, sub);
 
   const profile = useMemo(() => {
     if (profileBadges.data) {
       return chunks(
         profileBadges.data.tags.filter(t => t[0] === "a" || t[0] === "e"),
-        2
+        2,
       ).reduce((acc, [a, e]) => {
         return {
           ...acc,
@@ -45,7 +44,7 @@ export default function useProfileBadges(pubkey?: HexKey) {
         }
         return acc;
       },
-      { pubkeys: [], ds: [] } as BadgeAwards
+      { pubkeys: [], ds: [] } as BadgeAwards,
     ) as BadgeAwards;
   }, [profile]);
 
@@ -58,7 +57,7 @@ export default function useProfileBadges(pubkey?: HexKey) {
     return b;
   }, [profile, ds]);
 
-  const awards = useRequestBuilder<FlatNoteStore>(System, FlatNoteStore, awardsSub);
+  const awards = useRequestBuilder(NoteCollection, awardsSub);
 
   const result = useMemo(() => {
     if (awards.data) {
@@ -78,7 +77,7 @@ export default function useProfileBadges(pubkey?: HexKey) {
         })
         .filter(
           ({ award, badge }) =>
-            badge && award.pubkey === badge.pubkey && award.tags.find(t => t[0] === "p" && t[1] === pubkey)
+            badge && award.pubkey === badge.pubkey && award.tags.find(t => t[0] === "p" && t[1] === pubkey),
         )
         .map(({ badge }) => unwrap(badge));
     }

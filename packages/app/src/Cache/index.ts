@@ -2,6 +2,9 @@ import { UserProfileCache, UserRelaysCache, RelayMetricCache } from "@snort/syst
 import { EventInteractionCache } from "./EventInteractionCache";
 import { ChatCache } from "./ChatCache";
 import { Payments } from "./PaymentsCache";
+import { GiftWrapCache } from "./GiftWrapCache";
+import { NotificationsCache } from "./Notifications";
+import { FollowsFeedCache } from "./FollowsFeed";
 
 export const UserCache = new UserProfileCache();
 export const UserRelays = new UserRelaysCache();
@@ -9,6 +12,9 @@ export const RelayMetrics = new RelayMetricCache();
 export const Chats = new ChatCache();
 export const PaymentsCache = new Payments();
 export const InteractionCache = new EventInteractionCache();
+export const GiftsCache = new GiftWrapCache();
+export const Notifications = new NotificationsCache();
+export const FollowsFeed = new FollowsFeedCache();
 
 export async function preload(follows?: Array<string>) {
   const preloads = [
@@ -17,6 +23,9 @@ export async function preload(follows?: Array<string>) {
     InteractionCache.preload(),
     UserRelays.preload(follows),
     RelayMetrics.preload(),
+    GiftsCache.preload(),
+    Notifications.preload(),
+    FollowsFeed.preload(),
   ];
   await Promise.all(preloads);
 }

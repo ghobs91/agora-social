@@ -1,6 +1,16 @@
-import { ExternalStore, FeedCache, dedupe } from "@snort/shared";
-import { EventKind, NostrEvent, RequestBuilder, SystemInterface } from "@snort/system";
-import { Chat, ChatSystem, ChatType, inChatWith, lastReadInChat, selfChat } from "chat";
+import { ExternalStore, FeedCache } from "@snort/shared";
+import {
+  EventKind,
+  NostrEvent,
+  NostrPrefix,
+  RequestBuilder,
+  SystemInterface,
+  TLVEntryType,
+  encodeTLVEntries,
+  TaggedNostrEvent,
+  decodeTLV,
+} from "@snort/system";
+import { Chat, ChatSystem, ChatType, inChatWith, lastReadInChat } from "chat";
 import { debug } from "debug";
 
 export class Nip4ChatSystem extends ExternalStore<Array<Chat>> implements ChatSystem {
@@ -12,8 +22,8 @@ export class Nip4ChatSystem extends ExternalStore<Array<Chat>> implements ChatSy
     this.#cache = cache;
   }
 
-  async onEvent(evs: Array<NostrEvent>) {
-    const dms = evs.filter(a => a.kind === EventKind.DirectMessage);
+  async onEvent(evs: readonly TaggedNostrEvent[]) {
+    const dms = evs.filter(a => a.kind === EventKind.DirectMessage && a.tags.some(b => b[0] === "p"));
     if (dms.length > 0) {
       await this.#cache.bulkSet(dms);
       this.notifyChange();
@@ -25,7 +35,7 @@ export class Nip4ChatSystem extends ExternalStore<Array<Chat>> implements ChatSy
     const dms = this.#cache.snapshot();
     const dmSince = dms.reduce(
       (acc, v) => (v.created_at > acc && v.kind === EventKind.DirectMessage ? (acc = v.created_at) : acc),
-      0
+      0,
     );
 
     this.#log("Loading DMS since %s", new Date(dmSince * 1000));
@@ -40,27 +50,58 @@ export class Nip4ChatSystem extends ExternalStore<Array<Chat>> implements ChatSy
 
   listChats(pk: string): Chat[] {
     const myDms = this.#nip4Events();
-    return dedupe(myDms.map(a => inChatWith(a, pk))).map(a => {
-      const messages = myDms.filter(
-        b => (a === pk && selfChat(b, pk)) || (!selfChat(b, pk) && inChatWith(b, pk) === a)
-      );
-      return Nip4ChatSystem.createChatObj(a, messages);
-    });
+    const chats = myDms.reduce(
+      (acc, v) => {
+        const chatId = inChatWith(v, pk);
+        acc[chatId] ??= [];
+        acc[chatId].push(v);
+        return acc;
+      },
+      {} as Record<string, Array<NostrEvent>>,
+    );
+
+    return [...Object.entries(chats)].map(([k, v]) =>
+      Nip4ChatSystem.createChatObj(
+        encodeTLVEntries("chat4" as NostrPrefix, {
+          type: TLVEntryType.Author,
+          value: k,
+          length: 32,
+        }),
+        v,
+      ),
+    );
   }
 
   static createChatObj(id: string, messages: Array<NostrEvent>) {
     const last = lastReadInChat(id);
+    const participants = decodeTLV(id)
+      .filter(v => v.type === TLVEntryType.Author)
+      .map(v => ({
+        type: "pubkey",
+        id: v.value as string,
+      }));
     return {
       type: ChatType.DirectMessage,
       id,
       unread: messages.reduce((acc, v) => (v.created_at > last ? acc++ : acc), 0),
       lastMessage: messages.reduce((acc, v) => (v.created_at > acc ? v.created_at : acc), 0),
-      messages,
-      createMessage: (msg, pub) => {
-        return pub.sendDm(msg, id);
+      participants,
+      messages: messages.map(m => ({
+        id: m.id,
+        created_at: m.created_at,
+        from: m.pubkey,
+        tags: m.tags,
+        content: "",
+        needsDecryption: true,
+        decrypt: async pub => {
+          return await pub.decryptDm(m);
+        },
+      })),
+      createMessage: async (msg, pub) => {
+        return await Promise.all(participants.map(v => pub.sendDm(msg, v.id)));
       },
-      sendMessage: (ev: NostrEvent, system: SystemInterface) => {
-        system.BroadcastEvent(ev);
+      sendMessage: (ev, system: SystemInterface) => {
+        ev.forEach(a => system.BroadcastEvent(a));
       },
     } as Chat;
   }

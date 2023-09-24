@@ -1,66 +1,71 @@
 import "./DM.css";
 import { useEffect, useState } from "react";
-import { useIntl } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { useInView } from "react-intersection-observer";
-import { EventKind, TaggedRawEvent } from "@snort/system";
 
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import NoteTime from "Element/NoteTime";
 import Text from "Element/Text";
 import useLogin from "Hooks/useLogin";
-import { Chat, ChatType, chatTo, setLastReadIn } from "chat";
+import { Chat, ChatMessage, ChatType, setLastReadIn } from "chat";
+import ProfileImage from "./ProfileImage";
 
 import messages from "./messages";
-import ProfileImage from "./ProfileImage";
 
 export interface DMProps {
   chat: Chat;
-  data: TaggedRawEvent;
+  data: ChatMessage;
 }
 
 export default function DM(props: DMProps) {
-  const pubKey = useLogin().publicKey;
+  const { publicKey } = useLogin(s => ({ publicKey: s.publicKey }));
   const publisher = useEventPublisher();
-  const ev = props.data;
-  const needsDecryption = ev.kind === EventKind.DirectMessage;
-  const [content, setContent] = useState(needsDecryption ? "Loading..." : ev.content);
-  const [decrypted, setDecrypted] = useState(false);
-  const { ref, inView } = useInView();
+  const msg = props.data;
+  const [content, setContent] = useState<string>();
+  const { ref, inView } = useInView({ triggerOnce: true });
   const { formatMessage } = useIntl();
-  const isMe = ev.pubkey === pubKey;
-  const otherPubkey = isMe ? pubKey : chatTo(ev);
+  const isMe = msg.from === publicKey;
+  const otherPubkey = isMe ? publicKey : msg.from;
 
   async function decrypt() {
     if (publisher) {
-      const decrypted = await publisher.decryptDm(ev);
+      const decrypted = await msg.decrypt(publisher);
       setContent(decrypted || "<ERROR>");
       if (!isMe) {
-        setLastReadIn(ev.pubkey);
+        setLastReadIn(msg.id);
       }
     }
   }
 
   function sender() {
-    if (props.chat.type !== ChatType.DirectMessage && !isMe) {
-      return <ProfileImage pubkey={ev.pubkey} />;
+    const isGroup = props.chat.type === ChatType.PrivateGroupChat || props.chat.type === ChatType.PublicGroupChat;
+    if (isGroup && !isMe) {
+      return <ProfileImage pubkey={msg.from} />;
     }
   }
 
   useEffect(() => {
-    if (!decrypted && inView && needsDecryption) {
-      setDecrypted(true);
-      decrypt().catch(console.error);
+    if (inView) {
+      if (msg.needsDecryption) {
+        decrypt().catch(console.error);
+      } else {
+        setContent(msg.content);
+      }
     }
-  }, [inView, ev]);
+  }, [inView]);
 
   return (
     <div className={isMe ? "dm me" : "dm other"} ref={ref}>
       <div>
         {sender()}
-        <Text content={content} tags={[]} creator={otherPubkey} />
+        {content ? (
+          <Text id={msg.id} content={content} tags={[]} creator={otherPubkey} />
+        ) : (
+          <FormattedMessage defaultMessage="Loading..." />
+        )}
       </div>
       <div>
-        <NoteTime from={ev.created_at * 1000} fallback={formatMessage(messages.JustNow)} />
+        <NoteTime from={msg.created_at * 1000} fallback={formatMessage(messages.JustNow)} />
       </div>
     </div>
   );

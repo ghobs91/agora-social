@@ -1,30 +1,31 @@
-import { TaggedRawEvent, ParsedZap } from "@snort/system";
+import { TaggedNostrEvent, ParsedZap } from "@snort/system";
 import { LNURL } from "@snort/shared";
 import { useState } from "react";
 import { FormattedMessage, FormattedNumber, useIntl } from "react-intl";
 import { useUserProfile } from "@snort/system-react";
 
-import Text from "Element/Text";
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import { useWallet } from "Wallet";
 import { unwrap } from "SnortUtils";
 import { formatShort } from "Number";
 import Spinner from "Icons/Spinner";
 import SendSats from "Element/SendSats";
 import useLogin from "Hooks/useLogin";
-import { System } from "index";
 
 interface PollProps {
-  ev: TaggedRawEvent;
+  ev: TaggedNostrEvent;
   zaps: Array<ParsedZap>;
 }
+
+type PollTally = "zaps" | "pubkeys";
 
 export default function Poll(props: PollProps) {
   const { formatMessage } = useIntl();
   const publisher = useEventPublisher();
   const { wallet } = useWallet();
   const { preferences: prefs, publicKey: myPubKey, relays } = useLogin();
-  const pollerProfile = useUserProfile(System, props.ev.pubkey);
+  const pollerProfile = useUserProfile(props.ev.pubkey);
+  const [tallyBy, setTallyBy] = useState<PollTally>("pubkeys");
   const [error, setError] = useState("");
   const [invoice, setInvoice] = useState("");
   const [voting, setVoting] = useState<number>();
@@ -32,7 +33,10 @@ export default function Poll(props: PollProps) {
   const isMyPoll = props.ev.pubkey === myPubKey;
   const showResults = didVote || isMyPoll;
 
-  const options = props.ev.tags.filter(a => a[0] === "poll_option").sort((a, b) => Number(a[1]) - Number(b[1]));
+  const options = props.ev.tags
+    .filter(a => a[0] === "poll_option")
+    .sort((a, b) => (Number(a[1]) > Number(b[1]) ? 1 : -1));
+
   async function zapVote(ev: React.MouseEvent, opt: number) {
     ev.stopPropagation();
     if (voting || !publisher) return;
@@ -47,15 +51,15 @@ export default function Poll(props: PollProps) {
             },
             {
               amount,
-            }
-          )
+            },
+          ),
         );
       }
 
       setVoting(opt);
       const r = Object.keys(relays.item);
       const zap = await publisher.zap(amount * 1000, props.ev.pubkey, r, props.ev.id, undefined, eb =>
-        eb.tag(["poll_option", opt.toString()])
+        eb.tag(["poll_option", opt.toString()]),
       );
 
       const lnurl = props.ev.tags.find(a => a[0] === "zap")?.[1] || pollerProfile?.lud16 || pollerProfile?.lud06;
@@ -68,7 +72,7 @@ export default function Poll(props: PollProps) {
         throw new Error(
           formatMessage({
             defaultMessage: "Can't vote because LNURL service does not support zaps",
-          })
+          }),
         );
       }
 
@@ -85,7 +89,7 @@ export default function Poll(props: PollProps) {
         setError(
           formatMessage({
             defaultMessage: "Failed to send vote",
-          })
+          }),
         );
       }
     } finally {
@@ -93,33 +97,57 @@ export default function Poll(props: PollProps) {
     }
   }
 
-  const allTotal = props.zaps.filter(a => a.pollOption !== undefined).reduce((acc, v) => (acc += v.amount), 0);
+  const totalVotes = (() => {
+    switch (tallyBy) {
+      case "zaps":
+        return props.zaps.filter(a => a.pollOption !== undefined).reduce((acc, v) => (acc += v.amount), 0);
+      case "pubkeys":
+        return new Set(props.zaps.filter(a => a.pollOption !== undefined).map(a => unwrap(a.sender))).size;
+    }
+  })();
+
   return (
     <>
-      <small>
-        <FormattedMessage
-          defaultMessage="You are voting with {amount} sats"
-          values={{
-            amount: formatShort(prefs.defaultZapAmount),
-          }}
-        />
-      </small>
+      <div className="flex f-space p">
+        <small>
+          <FormattedMessage
+            defaultMessage="You are voting with {amount} sats"
+            values={{
+              amount: formatShort(prefs.defaultZapAmount),
+            }}
+          />
+        </small>
+        <button type="button" onClick={() => setTallyBy(s => (s !== "zaps" ? "zaps" : "pubkeys"))}>
+          <FormattedMessage
+            defaultMessage="Votes by {type}"
+            values={{
+              type:
+                tallyBy === "zaps" ? (
+                  <FormattedMessage defaultMessage="zap" />
+                ) : (
+                  <FormattedMessage defaultMessage="user" />
+                ),
+            }}
+          />
+        </button>
+      </div>
       <div className="poll-body">
         {options.map(a => {
           const opt = Number(a[1]);
           const desc = a[2];
           const zapsOnOption = props.zaps.filter(b => b.pollOption === opt);
-          const total = zapsOnOption.reduce((acc, v) => (acc += v.amount), 0);
-          const weight = allTotal === 0 ? 0 : total / allTotal;
+          const total = (() => {
+            switch (tallyBy) {
+              case "zaps":
+                return zapsOnOption.reduce((acc, v) => (acc += v.amount), 0);
+              case "pubkeys":
+                return new Set(zapsOnOption.map(a => unwrap(a.sender))).size;
+            }
+          })();
+          const weight = totalVotes === 0 ? 0 : total / totalVotes;
           return (
             <div key={a[1]} className="flex" onClick={e => zapVote(e, opt)}>
-              <div className="f-grow">
-                {opt === voting ? (
-                  <Spinner />
-                ) : (
-                  <Text content={desc} tags={props.ev.tags} creator={props.ev.pubkey} disableMediaSpotlight={true} />
-                )}
-              </div>
+              <div className="f-grow">{opt === voting ? <Spinner /> : <>{desc}</>}</div>
               {showResults && (
                 <>
                   <div className="flex">

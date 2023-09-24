@@ -2,11 +2,10 @@ import { v4 as uuid } from "uuid";
 import debug from "debug";
 import { unixNowMs, unwrap } from "@snort/shared";
 
-import { Connection, ReqFilter, Nips, TaggedRawEvent } from ".";
+import { Connection, ReqFilter, Nips, TaggedNostrEvent } from ".";
 import { NoteStore } from "./note-collection";
-import { flatMerge } from "./request-merger";
 import { BuiltRawReqFilter } from "./request-builder";
-import { FlatReqFilter, expandFilter } from "./request-expander";
+import { eventMatchesFilter } from "./request-matcher";
 
 /**
  * Tracing for relay query status
@@ -18,7 +17,6 @@ class QueryTrace {
   eose?: number;
   close?: number;
   #wasForceClosed = false;
-  readonly flatFilters: Array<FlatReqFilter>;
   readonly #fnClose: (id: string) => void;
   readonly #fnProgress: () => void;
 
@@ -27,13 +25,12 @@ class QueryTrace {
     readonly filters: Array<ReqFilter>,
     readonly connId: string,
     fnClose: (id: string) => void,
-    fnProgress: () => void
+    fnProgress: () => void,
   ) {
     this.id = uuid();
     this.start = unixNowMs();
     this.#fnClose = fnClose;
     this.#fnProgress = fnProgress;
-    this.flatFilters = filters.flatMap(expandFilter);
   }
 
   sentToRelay() {
@@ -165,21 +162,21 @@ export class Query implements QueryBase {
    * Recompute the complete set of compressed filters from all query traces
    */
   get filters() {
-    return flatMerge(this.flatFilters);
-  }
-
-  get flatFilters() {
-    return this.#tracing.flatMap(a => a.flatFilters);
+    return this.#tracing.flatMap(a => a.filters);
   }
 
   get feed() {
     return this.#feed;
   }
 
-  onEvent(sub: string, e: TaggedRawEvent) {
+  handleEvent(sub: string, e: TaggedNostrEvent) {
     for (const t of this.#tracing) {
       if (t.id === sub) {
-        this.feed.add(e);
+        if (t.filters.some(v => eventMatchesFilter(e, v))) {
+          this.feed.add(e);
+        } else {
+          this.#log("Event did not match filter, rejecting %O", e);
+        }
         break;
       }
     }
@@ -198,6 +195,28 @@ export class Query implements QueryBase {
 
   cleanup() {
     this.#stopCheckTraces();
+  }
+
+  /**
+   * Insert a new trace as a placeholder
+   */
+  insertCompletedTrace(subq: BuiltRawReqFilter, data: Readonly<Array<TaggedNostrEvent>>) {
+    const qt = new QueryTrace(
+      subq.relay,
+      subq.filters,
+      "",
+      () => {
+        // nothing to close
+      },
+      () => {
+        // nothing to progress
+      },
+    );
+    qt.sentToRelay();
+    qt.gotEose();
+    this.#tracing.push(qt);
+    this.feed.add(data);
+    return qt;
   }
 
   sendToRelay(c: Connection, subq: BuiltRawReqFilter) {
@@ -293,7 +312,7 @@ export class Query implements QueryBase {
       q.filters,
       c.Id,
       x => c.CloseReq(x),
-      () => this.#onProgress()
+      () => this.#onProgress(),
     );
     this.#tracing.push(qt);
     c.QueueReq(["REQ", qt.id, ...qt.filters], () => qt.sentToRelay());

@@ -56,6 +56,21 @@ const getMessages = (locale: string) => {
       case "fa-IR":
       case "fa":
         return (await import("translations/fa_IR.json")).default;
+      case "th-TH":
+      case "th":
+        return (await import("translations/th_TH.json")).default;
+      case "pt-BR":
+      case "pt":
+        return (await import("translations/pt_BR.json")).default;
+      case "sw-KE":
+      case "sw":
+        return (await import("translations/sw_KE.json")).default;
+      case "nl-NL":
+      case "nl":
+        return (await import("translations/nl_NL.json")).default;
+      case "fi-FI":
+      case "fi":
+        return (await import("translations/fi_FI.json")).default;
       case DefaultLocale:
       case "en":
         return enMessages;
@@ -66,7 +81,7 @@ const getMessages = (locale: string) => {
 };
 
 export const IntlProvider = ({ children }: { children: ReactNode }) => {
-  const { language } = useLogin().preferences;
+  const { language } = useLogin(s => ({ language: s.preferences.language }));
   const locale = language ?? getLocale();
   const [messages, setMessages] = useState<Record<string, string>>(enMessages);
 

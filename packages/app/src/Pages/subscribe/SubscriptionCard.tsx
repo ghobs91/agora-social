@@ -5,10 +5,10 @@ import SnortApi, { Subscription, SubscriptionError } from "SnortApi";
 import { mapPlanName, mapSubscriptionErrorCode } from ".";
 import AsyncButton from "Element/AsyncButton";
 import Icon from "Icons/Icon";
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import SendSats from "Element/SendSats";
 import Nip5Service from "Element/Nip5Service";
-import { SnortNostrAddressService } from "Pages/Verification";
+import { SnortNostrAddressService } from "Pages/NostrAddressPage";
 import Nip05 from "Element/Nip05";
 
 export default function SubscriptionCard({ sub }: { sub: Subscription }) {
@@ -62,7 +62,7 @@ export default function SubscriptionCard({ sub }: { sub: Subscription }) {
 
   return (
     <>
-      <div className="card">
+      <div className="p subtier">
         <div className="flex card-title">
           <Icon name="badge" className="mr5" size={25} />
           {mapPlanName(sub.type)}

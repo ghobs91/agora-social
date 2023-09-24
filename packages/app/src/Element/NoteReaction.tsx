@@ -1,21 +1,27 @@
 import "./NoteReaction.css";
 import { Link } from "react-router-dom";
 import { useMemo } from "react";
-import { EventKind, NostrEvent, TaggedRawEvent, NostrPrefix, EventExt } from "@snort/system";
+import { EventKind, NostrEvent, TaggedNostrEvent, NostrPrefix, EventExt } from "@snort/system";
 
 import Note from "Element/Note";
-import ProfileImage from "Element/ProfileImage";
+import { getDisplayName } from "Element/ProfileImage";
 import { eventLink, hexToBech32 } from "SnortUtils";
-import NoteTime from "Element/NoteTime";
 import useModeration from "Hooks/useModeration";
+import { FormattedMessage } from "react-intl";
+import Icon from "Icons/Icon";
+import { useUserProfile } from "@snort/system-react";
+import { useInView } from "react-intersection-observer";
 
 export interface NoteReactionProps {
-  data: TaggedRawEvent;
-  root?: TaggedRawEvent;
+  data: TaggedNostrEvent;
+  root?: TaggedNostrEvent;
+  depth?: number;
 }
 export default function NoteReaction(props: NoteReactionProps) {
   const { data: ev } = props;
   const { isMuted } = useModeration();
+  const { inView, ref } = useInView({ triggerOnce: true });
+  const profile = useUserProfile(inView ? ev.pubkey : "");
 
   const refEvent = useMemo(() => {
     if (ev) {
@@ -40,10 +46,16 @@ export default function NoteReaction(props: NoteReactionProps) {
    * Some clients embed the reposted note in the content
    */
   function extractRoot() {
+    if (!inView) return null;
     if (ev?.kind === EventKind.Repost && ev.content.length > 0 && ev.content !== "#[0]") {
       try {
         const r: NostrEvent = JSON.parse(ev.content);
-        return r as TaggedRawEvent;
+        EventExt.fixupEvent(r);
+        if (!EventExt.verify(r)) {
+          console.debug("Event in repost is invalid");
+          return undefined;
+        }
+        return r as TaggedNostrEvent;
       } catch (e) {
         console.error("Could not load reposted content", e);
       }
@@ -51,7 +63,11 @@ export default function NoteReaction(props: NoteReactionProps) {
     return props.root;
   }
 
-  const root = extractRoot();
+  const root = useMemo(() => extractRoot(), [ev, props.root, inView]);
+
+  if (!inView) {
+    return <div className="card reaction" ref={ref}></div>;
+  }
   const isOpMuted = root && isMuted(root.pubkey);
   const shouldNotBeRendered = isOpMuted || root?.kind !== EventKind.TextNote;
   const opt = {
@@ -60,14 +76,17 @@ export default function NoteReaction(props: NoteReactionProps) {
   };
 
   return shouldNotBeRendered ? null : (
-    <div className="reaction">
-      <div className="header flex">
-        <ProfileImage pubkey={EventExt.getRootPubKey(ev)} />
-        <div className="info">
-          <NoteTime from={ev.created_at * 1000} />
-        </div>
+    <div className="card reaction">
+      <div className="flex g4">
+        <Icon name="repeat" size={18} />
+        <FormattedMessage
+          defaultMessage="{name} reposted"
+          values={{
+            name: getDisplayName(profile, ev.pubkey),
+          }}
+        />
       </div>
-      {root ? <Note data={root} options={opt} related={[]} /> : null}
+      {root ? <Note data={root} options={opt} related={[]} depth={props.depth} /> : null}
       {!root && refEvent ? (
         <p>
           <Link to={eventLink(refEvent[1] ?? "", refEvent[2])}>

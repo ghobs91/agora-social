@@ -2,13 +2,14 @@ import "./FollowButton.css";
 import { FormattedMessage } from "react-intl";
 import { HexKey } from "@snort/system";
 
-import useEventPublisher from "Feed/EventPublisher";
+import useEventPublisher from "Hooks/useEventPublisher";
 import { parseId } from "SnortUtils";
 import useLogin from "Hooks/useLogin";
 import AsyncButton from "Element/AsyncButton";
 import { System } from "index";
 
 import messages from "./messages";
+import { FollowsFeed } from "Cache";
 
 export interface FollowButtonProps {
   pubkey: HexKey;
@@ -17,13 +18,14 @@ export interface FollowButtonProps {
 export default function FollowButton(props: FollowButtonProps) {
   const pubkey = parseId(props.pubkey);
   const publisher = useEventPublisher();
-  const { follows, relays } = useLogin();
+  const { follows, relays, readonly } = useLogin(s => ({ follows: s.follows, relays: s.relays, readonly: s.readonly }));
   const isFollowing = follows.item.includes(pubkey);
-  const baseClassname = `${props.className} follow-button`;
+  const baseClassname = `${props.className ? ` ${props.className}` : ""}follow-button`;
 
   async function follow(pubkey: HexKey) {
     if (publisher) {
       const ev = await publisher.contactList([pubkey, ...follows.item], relays.item);
+      await FollowsFeed.backFill(System, [pubkey]);
       System.BroadcastEvent(ev);
     }
   }
@@ -32,7 +34,7 @@ export default function FollowButton(props: FollowButtonProps) {
     if (publisher) {
       const ev = await publisher.contactList(
         follows.item.filter(a => a !== pubkey),
-        relays.item
+        relays.item,
       );
       System.BroadcastEvent(ev);
     }
@@ -41,6 +43,7 @@ export default function FollowButton(props: FollowButtonProps) {
   return (
     <AsyncButton
       className={isFollowing ? `${baseClassname} secondary` : baseClassname}
+      disabled={readonly}
       onClick={() => (isFollowing ? unfollow(pubkey) : follow(pubkey))}>
       {isFollowing ? <FormattedMessage {...messages.Unfollow} /> : <FormattedMessage {...messages.Follow} />}
     </AsyncButton>
