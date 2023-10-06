@@ -1,0 +1,7 @@
+.hashtag {
+  color: var(--highlight);
+}
+
+.hashtag::after {
+  content: " ";
+}

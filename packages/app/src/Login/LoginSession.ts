@@ -1,4 +1,4 @@
-import { HexKey, RelaySettings, u256, PinEncrypted, PinEncryptedPayload } from "@snort/system";
+import { HexKey, RelaySettings, u256, KeyStorage } from "@snort/system";
 import { UserPreferences } from "Login";
 import { SubscriptionEvent } from "Subscription";
 
@@ -16,6 +16,10 @@ export enum LoginSessionType {
   Nip7 = "nip7",
   Nip46 = "nip46",
   Nip7os = "nip7_os",
+}
+
+export interface SnortAppData {
+  mutedWords: Array<string>;
 }
 
 export interface LoginSession {
@@ -43,7 +47,7 @@ export interface LoginSession {
   /**
    * Encrypted private key
    */
-  privateKeyData?: PinEncrypted | PinEncryptedPayload;
+  privateKeyData?: KeyStorage;
 
   /**
    * BIP39-generated, hex-encoded entropy
@@ -114,4 +118,14 @@ export interface LoginSession {
    * Remote signer relays (NIP-46)
    */
   remoteSignerRelays?: Array<string>;
+
+  /**
+   * Snort application data
+   */
+  appData: Newest<SnortAppData>;
+
+  /**
+   * A list of chats which we have joined (NIP-28/NIP-29)
+   */
+  extraChats: Array<string>;
 }

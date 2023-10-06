@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { TaggedNostrEvent, Lists, EventKind, FlatNoteStore, RequestBuilder, NoteCollection } from "@snort/system";
+import { TaggedNostrEvent, Lists, EventKind, RequestBuilder, NoteCollection } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
 
 import { bech32ToHex, getNewest, getNewestEventTagsByKey, unwrap } from "SnortUtils";
@@ -8,13 +8,24 @@ import useEventPublisher from "Hooks/useEventPublisher";
 import { getMutedKeys } from "Feed/MuteList";
 import useModeration from "Hooks/useModeration";
 import useLogin from "Hooks/useLogin";
-import { addSubscription, setBlocked, setBookmarked, setFollows, setMuted, setPinned, setRelays, setTags } from "Login";
+import {
+  SnortAppData,
+  addSubscription,
+  setAppData,
+  setBlocked,
+  setBookmarked,
+  setFollows,
+  setMuted,
+  setPinned,
+  setRelays,
+  setTags,
+} from "Login";
 import { SnortPubKey } from "Const";
 import { SubscriptionEvent } from "Subscription";
 import useRelaysFeedFollows from "./RelaysFeedFollows";
 import { FollowsFeed, GiftsCache, Notifications, UserRelays } from "Cache";
 import { System } from "index";
-import { Nip4Chats } from "chat";
+import { Nip28Chats, Nip4Chats } from "chat";
 import { useRefreshFeedCache } from "Hooks/useRefreshFeedcache";
 
 /**
@@ -31,43 +42,43 @@ export default function useLoginFeed() {
   useRefreshFeedCache(GiftsCache, true);
 
   const subLogin = useMemo(() => {
-    if (!pubKey) return null;
+    if (!login || !pubKey) return null;
 
     const b = new RequestBuilder(`login:${pubKey.slice(0, 12)}`);
     b.withOptions({
       leaveOpen: true,
     });
     b.withFilter().authors([pubKey]).kinds([EventKind.ContactList]);
-    b.withFilter()
-      .kinds([EventKind.SnortSubscriptions])
-      .authors([bech32ToHex(SnortPubKey)])
-      .tag("p", [pubKey])
-      .limit(1);
-
-    b.add(Nip4Chats.subscription(pubKey));
-
-    return b;
-  }, [pubKey]);
-
-  const subLists = useMemo(() => {
-    if (!pubKey) return null;
-    const b = new RequestBuilder(`login:${pubKey.slice(0, 12)}:lists`);
-    b.withOptions({
-      leaveOpen: true,
-    });
+    if (!login.readonly) {
+      b.withFilter().authors([pubKey]).kinds([EventKind.AppData]).tag("d", ["snort"]);
+      b.withFilter()
+        .relay("wss://relay.snort.social")
+        .kinds([EventKind.SnortSubscriptions])
+        .authors([bech32ToHex(SnortPubKey)])
+        .tag("p", [pubKey])
+        .limit(1);
+    }
     b.withFilter()
       .authors([pubKey])
       .kinds([EventKind.PubkeyLists])
       .tag("d", [Lists.Muted, Lists.Followed, Lists.Pinned, Lists.Bookmarked]);
 
+    const n4Sub = Nip4Chats.subscription(login);
+    if (n4Sub) {
+      b.add(n4Sub);
+    }
+    const n28Sub = Nip28Chats.subscription(login);
+    if (n28Sub) {
+      b.add(n28Sub);
+    }
     return b;
-  }, [pubKey]);
+  }, [login]);
 
   const loginFeed = useRequestBuilder(NoteCollection, subLogin);
 
   // update relays and follow lists
   useEffect(() => {
-    if (loginFeed.data && publisher) {
+    if (loginFeed.data) {
       const contactList = getNewest(loginFeed.data.filter(a => a.kind === EventKind.ContactList));
       if (contactList) {
         if (contactList.content !== "" && contactList.content !== "{}") {
@@ -81,22 +92,32 @@ export default function useLoginFeed() {
       }
 
       Nip4Chats.onEvent(loginFeed.data);
+      Nip28Chats.onEvent(loginFeed.data);
 
-      const subs = loginFeed.data.filter(
-        a => a.kind === EventKind.SnortSubscriptions && a.pubkey === bech32ToHex(SnortPubKey),
-      );
-      Promise.all(
-        subs.map(async a => {
-          const dx = await publisher.decryptDm(a);
-          if (dx) {
-            const ex = JSON.parse(dx);
-            return {
-              id: a.id,
-              ...ex,
-            } as SubscriptionEvent;
-          }
-        }),
-      ).then(a => addSubscription(login, ...a.filter(a => a !== undefined).map(unwrap)));
+      if (publisher) {
+        const subs = loginFeed.data.filter(
+          a => a.kind === EventKind.SnortSubscriptions && a.pubkey === bech32ToHex(SnortPubKey),
+        );
+        Promise.all(
+          subs.map(async a => {
+            const dx = await publisher.decryptDm(a);
+            if (dx) {
+              const ex = JSON.parse(dx);
+              return {
+                id: a.id,
+                ...ex,
+              } as SubscriptionEvent;
+            }
+          }),
+        ).then(a => addSubscription(login, ...a.filter(a => a !== undefined).map(unwrap)));
+
+        const appData = getNewest(loginFeed.data.filter(a => a.kind === EventKind.AppData));
+        if (appData) {
+          publisher.decryptGeneric(appData.content, appData.pubkey).then(d => {
+            setAppData(login, JSON.parse(d) as SnortAppData, appData.created_at * 1000);
+          });
+        }
+      }
     }
   }, [loginFeed, publisher]);
 
@@ -156,26 +177,28 @@ export default function useLoginFeed() {
     }
   }
 
-  const listsFeed = useRequestBuilder(FlatNoteStore, subLists);
-
   useEffect(() => {
-    if (listsFeed.data) {
+    if (loginFeed.data) {
       const getList = (evs: readonly TaggedNostrEvent[], list: Lists) =>
-        evs.filter(a => unwrap(a.tags.find(b => b[0] === "d"))[1] === list);
+        evs
+          .filter(
+            a => a.kind === EventKind.TagLists || a.kind === EventKind.NoteLists || a.kind === EventKind.PubkeyLists,
+          )
+          .filter(a => unwrap(a.tags.find(b => b[0] === "d"))[1] === list);
 
-      const mutedFeed = getList(listsFeed.data, Lists.Muted);
+      const mutedFeed = getList(loginFeed.data, Lists.Muted);
       handleMutedFeed(mutedFeed);
 
-      const pinnedFeed = getList(listsFeed.data, Lists.Pinned);
+      const pinnedFeed = getList(loginFeed.data, Lists.Pinned);
       handlePinnedFeed(pinnedFeed);
 
-      const tagsFeed = getList(listsFeed.data, Lists.Followed);
+      const tagsFeed = getList(loginFeed.data, Lists.Followed);
       handleTagFeed(tagsFeed);
 
-      const bookmarkFeed = getList(listsFeed.data, Lists.Bookmarked);
+      const bookmarkFeed = getList(loginFeed.data, Lists.Bookmarked);
       handleBookmarkFeed(bookmarkFeed);
     }
-  }, [listsFeed]);
+  }, [loginFeed]);
 
   useEffect(() => {
     UserRelays.buffer(follows.item).catch(console.error);

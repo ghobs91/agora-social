@@ -1,0 +1,8 @@
+{
+  "appName": "Snort",
+  "appNameCapitalized": "Snort",
+  "appTitle": "Snort - Nostr",
+  "nip05Domain": "snort.social",
+  "favicon": "public/favicon.ico",
+  "appleTouchIconUrl": "/nostrich_512.png"
+}

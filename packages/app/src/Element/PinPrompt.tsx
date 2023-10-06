@@ -1,14 +1,15 @@
 import useLogin from "Hooks/useLogin";
 import "./PinPrompt.css";
-import { ReactNode, useState } from "react";
+import { ReactNode, useRef, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { unwrap } from "@snort/shared";
+import { EventPublisher, InvalidPinError, PinEncrypted } from "@snort/system";
+
 import useEventPublisher from "Hooks/useEventPublisher";
 import { LoginStore, createPublisher, sessionNeedsPin } from "Login";
-import { unwrap } from "@snort/shared";
-import { EventPublisher, InvalidPinError, PinEncrypted, PinEncryptedPayload } from "@snort/system";
-import { DefaultPowWorker } from "index";
 import Modal from "./Modal";
 import AsyncButton from "./AsyncButton";
+import { WasmPowWorker } from "index";
 
 export function PinPrompt({
   onResult,
@@ -22,6 +23,7 @@ export function PinPrompt({
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const { formatMessage } = useIntl();
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
 
   async function submitPin() {
     if (pin.length < 4) {
@@ -54,29 +56,37 @@ export function PinPrompt({
 
   return (
     <Modal id="pin" onClose={() => onCancel()}>
-      <div className="flex-column g12">
-        <h2>
-          <FormattedMessage defaultMessage="Enter Pin" />
-        </h2>
-        {subTitle}
-        <input
-          type="number"
-          onChange={e => setPin(e.target.value)}
-          value={pin}
-          autoFocus={true}
-          maxLength={20}
-          minLength={4}
-        />
-        {error && <b className="error">{error}</b>}
-        <div className="flex g8">
-          <button type="button" onClick={() => onCancel()}>
-            <FormattedMessage defaultMessage="Cancel" />
-          </button>
-          <AsyncButton type="button" onClick={() => submitPin()}>
-            <FormattedMessage defaultMessage="Submit" />
-          </AsyncButton>
+      <form
+        onSubmit={e => {
+          e.preventDefault();
+          if (submitButtonRef.current) {
+            submitButtonRef.current.click();
+          }
+        }}>
+        <div className="flex-column g12">
+          <h2>
+            <FormattedMessage defaultMessage="Enter Pin" />
+          </h2>
+          {subTitle ? <div>{subTitle}</div> : null}
+          <input
+            type="number"
+            onChange={e => setPin(e.target.value)}
+            value={pin}
+            autoFocus={true}
+            maxLength={20}
+            minLength={4}
+          />
+          {error && <b className="error">{error}</b>}
+          <div className="flex g8">
+            <button type="button" onClick={() => onCancel()}>
+              <FormattedMessage defaultMessage="Cancel" />
+            </button>
+            <AsyncButton ref={submitButtonRef} onClick={() => submitPin()} type="submit">
+              <FormattedMessage defaultMessage="Submit" />
+            </AsyncButton>
+          </div>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }
@@ -91,7 +101,7 @@ export function LoginUnlock() {
 
     const pub = EventPublisher.privateKey(k);
     if (login.preferences.pow) {
-      pub.pow(login.preferences.pow, DefaultPowWorker);
+      pub.pow(login.preferences.pow, new WasmPowWorker());
     }
     LoginStore.setPublisher(login.id, pub);
     LoginStore.updateSession({
@@ -103,12 +113,12 @@ export function LoginUnlock() {
   }
 
   async function unlockSession(pin: string) {
-    const key = new PinEncrypted(unwrap(login.privateKeyData) as PinEncryptedPayload);
-    await key.decrypt(pin);
-    const pub = createPublisher(login, key);
+    const key = unwrap(login.privateKeyData);
+    await key.unlock(pin);
+    const pub = createPublisher(login);
     if (pub) {
       if (login.preferences.pow) {
-        pub.pow(login.preferences.pow, DefaultPowWorker);
+        pub.pow(login.preferences.pow, new WasmPowWorker());
       }
       LoginStore.setPublisher(login.id, pub);
       LoginStore.updateSession({
@@ -132,7 +142,12 @@ export function LoginUnlock() {
         <PinPrompt
           subTitle={
             <p>
-              <FormattedMessage defaultMessage="Enter a pin to encrypt your private key, you must enter this pin every time you open Snort." />
+              <FormattedMessage
+                defaultMessage="Enter a pin to encrypt your private key, you must enter this pin every time you open {site}."
+                values={{
+                  site: process.env.APP_NAME_CAPITALIZED,
+                }}
+              />
             </p>
           }
           onResult={encryptMigration}

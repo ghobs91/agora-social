@@ -1,6 +1,6 @@
 import "./Profile.css";
 import { useEffect, useState } from "react";
-import { FormattedMessage } from "react-intl";
+import FormattedMessage from "Element/FormattedMessage";
 import { useNavigate } from "react-router-dom";
 import { mapEventToProfile } from "@snort/system";
 import { useUserProfile } from "@snort/system-react";
@@ -13,7 +13,7 @@ import AsyncButton from "Element/AsyncButton";
 import { UserCache } from "Cache";
 import useLogin from "Hooks/useLogin";
 import Icon from "Icons/Icon";
-import Avatar from "Element/Avatar";
+import Avatar from "Element/User/Avatar";
 
 export interface ProfileSettingsProps {
   avatar?: boolean;
@@ -162,7 +162,7 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
               <button className="flex f-center" type="button" onClick={() => navigate("/nostr-address")}>
                 <FormattedMessage defaultMessage="Buy nostr address" />
               </button>
-              <button className="flex f-center secondary" type="button" onClick={() => navigate("/nostr-address")}>
+              <button className="flex f-center secondary" type="button" onClick={() => navigate("/free-nostr-address")}>
                 <FormattedMessage defaultMessage="Get a free one" />
               </button>
             </div>

@@ -4,20 +4,31 @@ import { ReactNode, useEffect } from "react";
 export interface ModalProps {
   id: string;
   className?: string;
-  onClose?: () => void;
+  onClose?: (e: React.MouseEvent | KeyboardEvent) => void;
   children: ReactNode;
 }
 
 export default function Modal(props: ModalProps) {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && props.onClose) {
+      props.onClose(e);
+    }
+  };
+
   useEffect(() => {
     document.body.classList.add("scroll-lock");
-    return () => document.body.classList.remove("scroll-lock");
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.classList.remove("scroll-lock");
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   return (
     <div className={`modal${props.className ? ` ${props.className}` : ""}`} onClick={props.onClose}>
-      <div className="modal-body" onClick={e => e.stopPropagation()}>
-        {props.children}
+      <div className="modal-body" onClick={props.onClose}>
+        <div onClick={e => e.stopPropagation()}>{props.children}</div>
       </div>
     </div>
   );

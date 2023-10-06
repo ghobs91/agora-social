@@ -1,7 +1,7 @@
 import "./Deck.css";
 import { CSSProperties, createContext, useContext, useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
-import { FormattedMessage } from "react-intl";
+import FormattedMessage from "Element/FormattedMessage";
 import { NostrLink } from "@snort/system";
 
 import { DeckNav } from "Element/Deck/Nav";
@@ -9,15 +9,15 @@ import useLoginFeed from "Feed/LoginFeed";
 import { useLoginRelays } from "Hooks/useLoginRelays";
 import { useTheme } from "Hooks/useTheme";
 import Articles from "Element/Deck/Articles";
-import TimelineFollows from "Element/TimelineFollows";
+import TimelineFollows from "Element/Feed/TimelineFollows";
 import { transformTextCached } from "Hooks/useTextTransformCache";
 import Icon from "Icons/Icon";
 import NotificationsPage from "./Notifications";
 import useImgProxy from "Hooks/useImgProxy";
 import Modal from "Element/Modal";
-import { Thread } from "Element/Thread";
+import { Thread } from "Element/Event/Thread";
 import { RootTabs } from "Element/RootTabs";
-import { SpotlightMedia } from "Element/SpotlightMedia";
+import { SpotlightMedia } from "Element/Deck/SpotlightMedia";
 import { ThreadContext, ThreadContextWrapper } from "Hooks/useThreadContext";
 import Toaster from "Toaster";
 import useLogin from "Hooks/useLogin";
@@ -64,7 +64,7 @@ export function SnortDeckLayout() {
               case "articles":
                 return <ArticlesCol />;
               case "notifications":
-                return <NotificationsCol />;
+                return <NotificationsCol setThread={deckScope.setThread} />;
             }
           })}
         </div>
@@ -74,7 +74,7 @@ export function SnortDeckLayout() {
               <ThreadContextWrapper link={deckScope.thread}>
                 <SpotlightFromThread onClose={() => deckScope.setThread(undefined)} />
                 <div>
-                  <Thread onBack={() => deckScope.setThread(undefined)} />
+                  <Thread onBack={() => deckScope.setThread(undefined)} disableSpotlight={true} />
                 </div>
               </ThreadContextWrapper>
             </Modal>
@@ -167,7 +167,7 @@ function MediaCol({ setThread }: { setThread: (e: NostrLink) => void }) {
   );
 }
 
-function NotificationsCol() {
+function NotificationsCol({ setThread }: { setThread: (e: NostrLink) => void }) {
   return (
     <div>
       <div className="deck-col-header flex g8">
@@ -175,7 +175,7 @@ function NotificationsCol() {
         <FormattedMessage defaultMessage="Notifications" />
       </div>
       <div>
-        <NotificationsPage />
+        <NotificationsPage onClick={setThread} />
       </div>
     </div>
   );

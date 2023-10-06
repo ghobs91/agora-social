@@ -2,7 +2,7 @@ import * as secp from "@noble/curves/secp256k1";
 import * as utils from "@noble/curves/abstract/utils";
 import { v4 as uuid } from "uuid";
 
-import { HexKey, RelaySettings, PinEncrypted, EventPublisher } from "@snort/system";
+import { HexKey, RelaySettings, EventPublisher, KeyStorage, NotEncrypted } from "@snort/system";
 import { deepClone, sanitizeRelayUrl, unwrap, ExternalStore } from "@snort/shared";
 
 import { DefaultRelays } from "Const";
@@ -46,6 +46,13 @@ const LoggedOut = {
   latestNotification: 0,
   readNotifications: 0,
   subscriptions: [],
+  appData: {
+    item: {
+      mutedWords: [],
+    },
+    timestamp: 0,
+  },
+  extraChats: [],
 } as LoginSession;
 
 export class MultiAccountStore extends ExternalStore<LoginSession> {
@@ -71,7 +78,18 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
       if (v.type === LoginSessionType.PrivateKey && v.readonly) {
         v.readonly = false;
       }
+      v.appData ??= {
+        item: {
+          mutedWords: [],
+        },
+        timestamp: 0,
+      };
+      v.extraChats ??= [];
+      if (v.privateKeyData) {
+        v.privateKeyData = KeyStorage.fromPayload(v.privateKeyData as object);
+      }
     }
+    this.#loadIrisKeyIfExists();
   }
 
   getSessions() {
@@ -106,7 +124,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     type: LoginSessionType,
     relays?: Record<string, RelaySettings>,
     remoteSignerRelays?: Array<string>,
-    privateKey?: PinEncrypted,
+    privateKey?: KeyStorage,
   ) {
     if (this.#accounts.has(key)) {
       throw new Error("Already logged in with this pubkey");
@@ -144,7 +162,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     return Object.fromEntries(DefaultRelays.entries());
   }
 
-  loginWithPrivateKey(key: PinEncrypted, entropy?: string, relays?: Record<string, RelaySettings>) {
+  loginWithPrivateKey(key: KeyStorage, entropy?: string, relays?: Record<string, RelaySettings>) {
     const pubKey = utils.bytesToHex(secp.schnorr.getPublicKey(key.value));
     if (this.#accounts.has(pubKey)) {
       throw new Error("Already logged in with this pubkey");
@@ -203,6 +221,22 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     return { ...s };
   }
 
+  #loadIrisKeyIfExists() {
+    try {
+      const irisKeyJSON = window.localStorage.getItem("iris.myKey");
+      if (irisKeyJSON) {
+        const irisKeyObj = JSON.parse(irisKeyJSON);
+        if (irisKeyObj.priv) {
+          const privateKey = new NotEncrypted(irisKeyObj.priv);
+          this.loginWithPrivateKey(privateKey);
+          window.localStorage.removeItem("iris.myKey");
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load iris key", e);
+    }
+  }
+
   #migrate() {
     let didMigrate = false;
 
@@ -255,7 +289,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     }
     const toSave = [];
     for (const v of this.#accounts.values()) {
-      if (v.privateKeyData instanceof PinEncrypted) {
+      if (v.privateKeyData instanceof KeyStorage) {
         toSave.push({
           ...v,
           privateKeyData: v.privateKeyData.toPayload(),

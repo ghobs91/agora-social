@@ -1,6 +1,6 @@
 import "./ProfilePage.css";
 import { useEffect, useState } from "react";
-import { FormattedMessage } from "react-intl";
+import FormattedMessage from "Element/FormattedMessage";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   encodeTLV,
@@ -17,9 +17,9 @@ import { useUserProfile } from "@snort/system-react";
 
 import { findTag, getReactions, unwrap } from "SnortUtils";
 import { formatShort } from "Number";
-import Note from "Element/Note";
+import Note from "Element/Event/Note";
 import Bookmarks from "Element/Bookmarks";
-import RelaysMetadata from "Element/RelaysMetadata";
+import RelaysMetadata from "Element/Relay/RelaysMetadata";
 import { Tab, TabElement } from "Element/Tabs";
 import Icon from "Icons/Icon";
 import useMutedFeed from "Feed/MuteList";
@@ -31,24 +31,24 @@ import useFollowsFeed from "Feed/FollowsFeed";
 import useProfileBadges from "Feed/BadgesFeed";
 import useModeration from "Hooks/useModeration";
 import useZapsFeed from "Feed/ZapsFeed";
-import { default as ZapElement } from "Element/Zap";
-import FollowButton from "Element/FollowButton";
+import { default as ZapElement } from "Element/Event/Zap";
+import FollowButton from "Element/User/FollowButton";
 import { parseId, hexToBech32 } from "SnortUtils";
-import Avatar from "Element/Avatar";
-import Timeline from "Element/Timeline";
+import Avatar from "Element/User/Avatar";
+import Timeline from "Element/Feed/Timeline";
 import Text from "Element/Text";
 import SendSats from "Element/SendSats";
-import Nip05 from "Element/Nip05";
+import Nip05 from "Element/User/Nip05";
 import Copy from "Element/Copy";
-import ProfileImage from "Element/ProfileImage";
-import BlockList from "Element/BlockList";
-import MutedList from "Element/MutedList";
-import FollowsList from "Element/FollowListBase";
+import ProfileImage from "Element/User/ProfileImage";
+import BlockList from "Element/User/BlockList";
+import MutedList from "Element/User/MutedList";
+import FollowsList from "Element/User/FollowListBase";
 import IconButton from "Element/IconButton";
-import FollowsYou from "Element/FollowsYou";
+import FollowsYou from "Element/User/FollowsYou";
 import QrCode from "Element/QrCode";
 import Modal from "Element/Modal";
-import BadgeList from "Element/BadgeList";
+import BadgeList from "Element/User/BadgeList";
 import { ProxyImg } from "Element/ProxyImg";
 import useHorizontalScroll from "Hooks/useHorizontalScroll";
 import { EmailRegex } from "Const";
@@ -58,6 +58,7 @@ import { ZapTarget } from "Zapper";
 import { useStatusFeed } from "Feed/StatusFeed";
 
 import messages from "./messages";
+import { SpotlightMediaModal } from "../Element/Deck/SpotlightMedia";
 
 const NOTES = 0;
 const REACTIONS = 1;
@@ -74,9 +75,9 @@ function ZapsProfileTab({ id }: { id: HexKey }) {
   const zapsTotal = zaps.reduce((acc, z) => acc + z.amount, 0);
   return (
     <div className="main-content">
-      <div className="zaps-total">
+      <h2 className="p">
         <FormattedMessage {...messages.Sats} values={{ n: formatShort(zapsTotal) }} />
-      </div>
+      </h2>
       {zaps.map(z => (
         <ZapElement showZapped={false} zap={z} />
       ))}
@@ -86,12 +87,12 @@ function ZapsProfileTab({ id }: { id: HexKey }) {
 
 function FollowersTab({ id }: { id: HexKey }) {
   const followers = useFollowersFeed(id);
-  return <FollowsList pubkeys={followers} showAbout={true} />;
+  return <FollowsList pubkeys={followers} showAbout={true} className="p" />;
 }
 
 function FollowsTab({ id }: { id: HexKey }) {
   const follows = useFollowsFeed(id);
-  return <FollowsList pubkeys={follows} showAbout={true} />;
+  return <FollowsList pubkeys={follows} showAbout={true} className="p" />;
 }
 
 function RelaysTab({ id }: { id: HexKey }) {
@@ -120,6 +121,7 @@ export default function ProfilePage() {
   const isMe = loginPubKey === id;
   const [showLnQr, setShowLnQr] = useState<boolean>(false);
   const [showProfileQr, setShowProfileQr] = useState<boolean>(false);
+  const [modalImage, setModalImage] = useState<string>("");
   const aboutText = user?.about || "";
   const npub = !id?.startsWith(NostrPrefix.PublicKey) ? hexToBech32(NostrPrefix.PublicKey, id || undefined) : id;
 
@@ -276,8 +278,8 @@ export default function ProfilePage() {
   function username() {
     return (
       <>
-        <div className="name">
-          <h2>
+        <div className="flex-column g4">
+          <h2 className="flex g4">
             {user?.display_name || user?.name || "Nostrich"}
             <FollowsYou followsMe={follows.includes(loginPubKey ?? "")} />
           </h2>
@@ -402,7 +404,7 @@ export default function ProfilePage() {
       }
       case FOLLOWS: {
         if (isMe) {
-          return <FollowsList pubkeys={follows} showFollowAll={!isMe} showAbout={false} />;
+          return <FollowsList pubkeys={follows} showFollowAll={!isMe} showAbout={false} className="p" />;
         } else {
           return <FollowsTab id={id} />;
         }
@@ -428,7 +430,7 @@ export default function ProfilePage() {
   function avatar() {
     return (
       <div className="avatar-wrapper w-max">
-        <Avatar pubkey={id ?? ""} user={user} />
+        <Avatar pubkey={id ?? ""} user={user} onClick={() => setModalImage(user?.picture || "")} className="pointer" />
         <div className="profile-actions">
           {renderIcons()}
           {!isMe && id && <FollowButton className="primary" pubkey={id} />}
@@ -506,7 +508,15 @@ export default function ProfilePage() {
   return (
     <>
       <div className="profile">
-        {user?.banner && <ProxyImg alt="banner" className="banner" src={user.banner} size={w} />}
+        {user?.banner && (
+          <ProxyImg
+            alt="banner"
+            className="banner pointer"
+            src={user.banner}
+            size={w}
+            onClick={() => setModalImage(user.banner || "")}
+          />
+        )}
         <div className="profile-wrapper w-max">
           {avatar()}
           {userDetails()}
@@ -520,6 +530,7 @@ export default function ProfilePage() {
         </div>
       </div>
       <div className="main-content">{tabContent()}</div>
+      {modalImage && <SpotlightMediaModal onClose={() => setModalImage("")} images={[modalImage]} idx={0} />}
     </>
   );
 }

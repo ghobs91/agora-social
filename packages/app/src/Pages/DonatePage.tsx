@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
-import { FormattedMessage } from "react-intl";
+import FormattedMessage from "Element/FormattedMessage";
 import { HexKey } from "@snort/system";
 
 import { ApiHost, KieranPubKey, SnortPubKey } from "Const";
-import ProfilePreview from "Element/ProfilePreview";
-import ZapButton from "Element/ZapButton";
+import ProfilePreview from "Element/User/ProfilePreview";
+import ZapButton from "Element/Event/ZapButton";
 import { bech32ToHex } from "SnortUtils";
 import SnortApi, { RevenueSplit, RevenueToday } from "SnortApi";
+import Modal from "Element/Modal";
+import AsyncButton from "Element/AsyncButton";
+import QrCode from "Element/QrCode";
+import Copy from "Element/Copy";
 
 const Developers = [
   bech32ToHex(KieranPubKey), // kieran
+  bech32ToHex("npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk"), // Martti
   bech32ToHex("npub107jk7htfv243u0x5ynn43scq9wrxtaasmrwwa8lfu2ydwag6cx2quqncxg"), // verbiricha
   bech32ToHex("npub1r0rs5q2gk0e3dk3nlc7gnu378ec6cnlenqp8a3cjhyzu6f8k5sgs4sq9ac"), // Karnage
 ];
@@ -22,6 +27,7 @@ const Contributors = [
   bech32ToHex("npub179rec9sw2a5ngkr2wsjpjhwp2ksygjxn6uw5py9daj2ezhw3aw5swv3s6q"), // h3y6e - JA + other stuff
   bech32ToHex("npub17q5n2z8naw0xl6vu9lvt560lg33pdpe29k0k09umlfxm3vc4tqrq466f2y"), // w3irdrobot
   bech32ToHex("npub1ltx67888tz7lqnxlrg06x234vjnq349tcfyp52r0lstclp548mcqnuz40t"), // Vivek
+  bech32ToHex("npub1wh30wunfpkezx5s7edqu9g0s0raeetf5dgthzm0zw7sk8wqygmjqqfljgh"), // Fernando Porazzi
 ];
 
 const Translators = [
@@ -56,7 +62,13 @@ export const DonateLNURL = "donate@snort.social";
 const DonatePage = () => {
   const [splits, setSplits] = useState<RevenueSplit[]>([]);
   const [today, setSumToday] = useState<RevenueToday>();
+  const [onChain, setOnChain] = useState("");
   const api = new SnortApi(ApiHost);
+
+  async function getOnChainAddress() {
+    const { address } = await api.onChainDonation();
+    setOnChain(address);
+  }
 
   async function loadData() {
     const rsp = await api.revenueSplits();
@@ -80,10 +92,16 @@ const DonatePage = () => {
   return (
     <div className="main-content p">
       <h2>
-        <FormattedMessage defaultMessage="Help fund the development of Snort" />
+        <FormattedMessage
+          defaultMessage="Help fund the development of {site}"
+          values={{ site: process.env.APP_NAME_CAPITALIZED }}
+        />
       </h2>
       <p>
-        <FormattedMessage defaultMessage="Snort is an open source project built by passionate people in their free time" />
+        <FormattedMessage
+          defaultMessage="{site} is an open source project built by passionate people in their free time"
+          values={{ site: process.env.APP_NAME_CAPITALIZED }}
+        />
       </p>
       <p>
         <FormattedMessage defaultMessage="Your donations are greatly appreciated" />
@@ -103,24 +121,43 @@ const DonatePage = () => {
       <p>
         <FormattedMessage defaultMessage="Each contributor will get paid a percentage of all donations and NIP-05 orders, you can see the split amounts below" />
       </p>
-      <div className="card">
-        <div className="flex">
-          <div className="mr10">
-            <FormattedMessage defaultMessage="Lightning Donation: " />
+      <div className="flex-column g12">
+        <div className="b br p">
+          <div className="flex f-space">
+            <FormattedMessage defaultMessage="Lightning Donation" />
+            <ZapButton pubkey={bech32ToHex(SnortPubKey)} lnurl={DonateLNURL}>
+              <FormattedMessage defaultMessage="Donate" />
+            </ZapButton>
           </div>
-          <ZapButton pubkey={bech32ToHex(SnortPubKey)} lnurl={DonateLNURL}>
-            <FormattedMessage defaultMessage="Donate" />
-          </ZapButton>
+          {today && (
+            <small>
+              <FormattedMessage
+                defaultMessage="Total today (UTC): {amount} sats"
+                values={{ amount: today.donations.toLocaleString() }}
+              />
+            </small>
+          )}
         </div>
-        {today && (
-          <small>
-            <FormattedMessage
-              defaultMessage="Total today (UTC): {amount} sats"
-              values={{ amount: today.donations.toLocaleString() }}
-            />
-          </small>
-        )}
+        <div className="b br p">
+          <div className="flex f-space">
+            <FormattedMessage defaultMessage="On-chain Donation" />
+            <AsyncButton type="button" onClick={getOnChainAddress}>
+              <FormattedMessage defaultMessage="Get Address" />
+            </AsyncButton>
+          </div>
+        </div>
       </div>
+      {onChain && (
+        <Modal onClose={() => setOnChain("")} id="donate-on-chain">
+          <div className="flex-column f-center g12">
+            <h2>
+              <FormattedMessage defaultMessage="On-chain Donation Address" />
+            </h2>
+            <QrCode data={onChain} link={`bitcoin:${onChain}`} />
+            <Copy text={onChain} />
+          </div>
+        </Modal>
+      )}
       <h3>
         <FormattedMessage defaultMessage="Primary Developers" />
       </h3>

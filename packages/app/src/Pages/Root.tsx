@@ -1,21 +1,21 @@
 import { useContext, useEffect, useState } from "react";
 import { Link, Outlet, RouteObject, useParams } from "react-router-dom";
-import { FormattedMessage } from "react-intl";
+import FormattedMessage from "Element/FormattedMessage";
 import { unixNow } from "@snort/shared";
 import { NostrLink } from "@snort/system";
 
-import Timeline from "Element/Timeline";
+import Timeline from "Element/Feed/Timeline";
 import { System } from "index";
 import { TimelineSubject } from "Feed/TimelineFeed";
 import { debounce, getRelayName, sha256 } from "SnortUtils";
 import useLogin from "Hooks/useLogin";
 import Discover from "Pages/Discover";
 import TrendingUsers from "Element/TrendingUsers";
-import TrendingNotes from "Element/TrendingPosts";
+import TrendingNotes from "Element/Feed/TrendingPosts";
 import HashTagsPage from "Pages/HashTagsPage";
 import SuggestedProfiles from "Element/SuggestedProfiles";
 import { TaskList } from "Tasks/TaskList";
-import TimelineFollows from "Element/TimelineFollows";
+import TimelineFollows from "Element/Feed/TimelineFollows";
 import { RootTabs } from "Element/RootTabs";
 import { DeckContext } from "Pages/DeckLayout";
 

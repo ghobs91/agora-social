@@ -2,13 +2,21 @@ import "./index.css";
 import "@szhsin/react-menu/dist/index.css";
 import "./fonts/inter.css";
 
-import { compress, expand_filter, flat_merge, get_diff, default as wasmInit } from "@snort/system-wasm";
+import { compress, expand_filter, flat_merge, get_diff, pow, default as wasmInit } from "@snort/system-wasm";
 import WasmPath from "@snort/system-wasm/pkg/system_wasm_bg.wasm";
 
 import { StrictMode } from "react";
 import * as ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { NostrSystem, ProfileLoaderService, PowWorker, QueryOptimizer, FlatReqFilter, ReqFilter } from "@snort/system";
+import {
+  NostrSystem,
+  ProfileLoaderService,
+  QueryOptimizer,
+  FlatReqFilter,
+  ReqFilter,
+  PowMiner,
+  NostrEvent,
+} from "@snort/system";
 import { SnortContext } from "@snort/system-react";
 
 import * as serviceWorkerRegistration from "serviceWorkerRegistration";
@@ -29,7 +37,7 @@ import HelpPage from "Pages/HelpPage";
 import { NewUserRoutes } from "Pages/new";
 import { WalletRoutes } from "Pages/WalletPage";
 import NostrLinkHandler from "Pages/NostrLinkHandler";
-import { ThreadRoute } from "Element/Thread";
+import { ThreadRoute } from "Element/Event/Thread";
 import { SubscribeRoutes } from "Pages/subscribe";
 import ZapPoolPage from "Pages/ZapPool";
 import DebugPage from "Pages/Debug";
@@ -37,6 +45,7 @@ import { db } from "Db";
 import { preload, RelayMetrics, UserCache, UserRelays } from "Cache";
 import { LoginStore } from "Login";
 import { SnortDeckLayout } from "Pages/DeckLayout";
+import FreeNostrAddressPage from "./Pages/FreeNostrAddressPage";
 
 const WasmQueryOptimizer = {
   expandFilter: (f: ReqFilter) => {
@@ -52,6 +61,13 @@ const WasmQueryOptimizer = {
     return compress(all) as Array<ReqFilter>;
   },
 } as QueryOptimizer;
+
+export class WasmPowWorker implements PowMiner {
+  minePow(ev: NostrEvent, target: number): Promise<NostrEvent> {
+    const res = pow(ev, target);
+    return Promise.resolve(res);
+  }
+}
 
 /**
  * Singleton nostr system
@@ -74,11 +90,6 @@ export const System = new NostrSystem({
  * Singleton user profile loader
  */
 export const ProfileLoader = new ProfileLoaderService(System, UserCache);
-
-/**
- * Singleton POW worker
- */
-export const DefaultPowWorker = new PowWorker("/pow.js");
 
 serviceWorkerRegistration.register();
 
@@ -152,6 +163,10 @@ export const router = createBrowserRouter([
         path: "/settings",
         element: <SettingsPage />,
         children: SettingsRoutes,
+      },
+      {
+        path: "/free-nostr-address",
+        element: <FreeNostrAddressPage />,
       },
       {
         path: "/nostr-address",

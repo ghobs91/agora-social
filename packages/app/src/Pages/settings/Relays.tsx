@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { FormattedMessage } from "react-intl";
+import FormattedMessage from "Element/FormattedMessage";
 import { unixNowMs } from "@snort/shared";
 
 import { randomSample } from "SnortUtils";
-import Relay from "Element/Relay";
+import Relay from "Element/Relay/Relay";
 import useEventPublisher from "Hooks/useEventPublisher";
 import { System } from "index";
 import useLogin from "Hooks/useLogin";

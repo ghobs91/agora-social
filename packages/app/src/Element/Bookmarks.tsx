@@ -1,8 +1,8 @@
 import { useState, useMemo, ChangeEvent } from "react";
-import { FormattedMessage } from "react-intl";
+import FormattedMessage from "Element/FormattedMessage";
 import { HexKey, TaggedNostrEvent } from "@snort/system";
 
-import Note from "Element/Note";
+import Note from "Element/Event/Note";
 import useLogin from "Hooks/useLogin";
 import { UserCache } from "Cache";
 
@@ -28,7 +28,7 @@ const Bookmarks = ({ pubkey, bookmarks, related }: BookmarksProps) => {
 
   return (
     <div className="main-content">
-      <div className="mb10 flex-end">
+      <div className="flex-end p">
         <select
           disabled={ps.length <= 1}
           value={onlyPubkey}
