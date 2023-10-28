@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 import { unixNowMs } from "@snort/shared";
 
 import { randomSample } from "SnortUtils";
 import Relay from "Element/Relay/Relay";
 import useEventPublisher from "Hooks/useEventPublisher";
-import { System } from "index";
 import useLogin from "Hooks/useLogin";
 import { setRelays } from "Login";
 import AsyncButton from "Element/AsyncButton";
@@ -13,25 +12,25 @@ import AsyncButton from "Element/AsyncButton";
 import messages from "./messages";
 
 const RelaySettingsPage = () => {
-  const publisher = useEventPublisher();
+  const { publisher, system } = useEventPublisher();
   const login = useLogin();
   const relays = login.relays;
   const [newRelay, setNewRelay] = useState<string>();
 
   const otherConnections = useMemo(() => {
-    return System.Sockets.filter(a => relays.item[a.address] === undefined);
+    return system.Sockets.filter(a => relays.item[a.address] === undefined);
   }, [relays]);
 
   async function saveRelays() {
     if (publisher) {
       const ev = await publisher.contactList(login.follows.item, login.relays.item);
-      System.BroadcastEvent(ev);
+      system.BroadcastEvent(ev);
       try {
         const onlineRelays = await fetch("https://api.nostr.watch/v1/online").then(r => r.json());
         const relayList = await publisher.relayList(login.relays.item);
         const rs = Object.keys(relays.item).concat(randomSample(onlineRelays, 20));
         rs.forEach(r => {
-          System.WriteOnceToRelay(r, relayList);
+          system.WriteOnceToRelay(r, relayList);
         });
       } catch (error) {
         console.error(error);
@@ -56,7 +55,7 @@ const RelaySettingsPage = () => {
         <div className="flex mb10">
           <input
             type="text"
-            className="f-grow"
+            className="grow"
             placeholder="wss://my-relay.com"
             value={newRelay}
             onChange={handleNewRelayChange}
@@ -85,13 +84,13 @@ const RelaySettingsPage = () => {
       <h3>
         <FormattedMessage {...messages.Relays} />
       </h3>
-      <div className="flex f-col mb10">
+      <div className="flex flex-col mb10">
         {Object.keys(relays.item || {}).map(a => (
           <Relay addr={a} key={a} />
         ))}
       </div>
       <div className="flex mt10">
-        <div className="f-grow"></div>
+        <div className="grow"></div>
         <AsyncButton type="button" onClick={() => saveRelays()} disabled={login.readonly}>
           <FormattedMessage {...messages.Save} />
         </AsyncButton>
@@ -100,7 +99,7 @@ const RelaySettingsPage = () => {
       <h3>
         <FormattedMessage defaultMessage="Other Connections" />
       </h3>
-      <div className="flex f-col mb10">
+      <div className="flex flex-col mb10">
         {otherConnections.map(a => (
           <Relay addr={a.address} key={a.id} />
         ))}

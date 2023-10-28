@@ -4,6 +4,7 @@ import { getPublicKey, sha256, unixNow } from "@snort/shared";
 
 import { EventKind, HexKey, NostrEvent, NotSignedNostrEvent } from ".";
 import { minePow } from "./pow-util";
+import { findTag } from "./utils";
 
 export interface Tag {
   key: string;
@@ -17,6 +18,12 @@ export interface Thread {
   replyTo?: Tag;
   mentions: Array<Tag>;
   pubKeys: Array<HexKey>;
+}
+
+export const enum EventType {
+  Regular,
+  Replaceable,
+  ParameterizedReplaceable,
 }
 
 export abstract class EventExt {
@@ -52,6 +59,7 @@ export abstract class EventExt {
    * @returns True if valid signature
    */
   static verify(e: NostrEvent) {
+    if ((e.sig?.length ?? 0) < 64) return false;
     const id = this.createId(e);
     const result = secp.schnorr.verify(e.sig, id, e.pubkey);
     return result;
@@ -105,7 +113,6 @@ export abstract class EventExt {
   }
 
   static extractThread(ev: NostrEvent) {
-    const shouldWriteMarkers = ev.kind === EventKind.TextNote;
     const ret = {
       mentions: [],
       pubKeys: [],
@@ -115,16 +122,14 @@ export abstract class EventExt {
       const marked = replyTags.some(a => a.marker);
       if (!marked) {
         ret.root = replyTags[0];
-        ret.root.marker = shouldWriteMarkers ? "root" : undefined;
+        ret.root.marker = "root";
         if (replyTags.length > 1) {
           ret.replyTo = replyTags[replyTags.length - 1];
-          ret.replyTo.marker = shouldWriteMarkers ? "reply" : undefined;
+          ret.replyTo.marker = "reply";
         }
         if (replyTags.length > 2) {
           ret.mentions = replyTags.slice(1, -1);
-          if (shouldWriteMarkers) {
-            ret.mentions.forEach(a => (a.marker = "mention"));
-          }
+          ret.mentions.forEach(a => (a.marker = "mention"));
         }
       } else {
         const root = replyTags.find(a => a.marker === "root");
@@ -151,5 +156,26 @@ export abstract class EventExt {
     e.kind ??= 0;
     e.pubkey ??= "";
     e.sig ??= "";
+  }
+
+  static getType(kind: number) {
+    const legacyReplaceable = [0, 3, 41];
+    if (kind >= 30_000 && kind < 40_000) {
+      return EventType.ParameterizedReplaceable;
+    } else if (kind >= 10_000 && kind < 20_000) {
+      return EventType.Replaceable;
+    } else if (legacyReplaceable.includes(kind)) {
+      return EventType.Replaceable;
+    } else {
+      return EventType.Regular;
+    }
+  }
+
+  static isValid(ev: NostrEvent) {
+    const type = EventExt.getType(ev.kind);
+    if (type === EventType.ParameterizedReplaceable) {
+      if (!findTag(ev, "d")) return false;
+    }
+    return true;
   }
 }

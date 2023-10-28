@@ -1,8 +1,8 @@
 import { UserCache } from "Cache";
-import { getDisplayName } from "Element/User/ProfileImage";
 import { LNURL, ExternalStore, unixNow } from "@snort/shared";
 import { Toastore } from "Toaster";
 import { LNWallet, WalletInvoiceState, Wallets } from "Wallet";
+import { getDisplayName } from "SnortUtils";
 
 export enum ZapPoolRecipientType {
   Generic = 0,
@@ -168,4 +168,4 @@ class ZapPool extends ExternalStore<Array<ZapPoolRecipient>> {
   }
 }
 
-export const ZapPoolController = new ZapPool();
+export const ZapPoolController = CONFIG.features.zapPool ? new ZapPool() : undefined;

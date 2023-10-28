@@ -21,13 +21,17 @@ export function SpotlightMedia(props: SpotlightMediaProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
         case "ArrowLeft":
-        case "ArrowUp":
+        case "ArrowUp": {
+          e.preventDefault();
           dec();
           break;
+        }
         case "ArrowRight":
-        case "ArrowDown":
+        case "ArrowDown": {
+          e.preventDefault();
           inc();
           break;
+        }
       }
     };
 
@@ -59,13 +63,29 @@ export function SpotlightMedia(props: SpotlightMediaProps) {
     <div className="spotlight">
       <ProxyImg src={image} />
       <div className="details">
-        {idx + 1}/{props.images.length}
+        {props.images.length > 1 && `${idx + 1}/${props.images.length}`}
         <Icon name="x-close" size={24} onClick={props.onClose} />
       </div>
       {props.images.length > 1 && (
         <>
-          <Icon className="left" name="arrowFront" size={24} onClick={() => dec()} />
-          <Icon className="right" name="arrowFront" size={24} onClick={() => inc()} />
+          <Icon
+            className="left"
+            name="arrowFront"
+            size={24}
+            onClick={e => {
+              e.stopPropagation();
+              dec();
+            }}
+          />
+          <Icon
+            className="right"
+            name="arrowFront"
+            size={24}
+            onClick={e => {
+              e.stopPropagation();
+              inc();
+            }}
+          />
         </>
       )}
     </div>
@@ -74,7 +94,7 @@ export function SpotlightMedia(props: SpotlightMediaProps) {
 
 export function SpotlightMediaModal(props: SpotlightMediaProps) {
   return (
-    <Modal id="spotlight" onClose={props.onClose} className="spotlight">
+    <Modal id="spotlight" onClick={props.onClose} onClose={props.onClose} className="spotlight">
       <SpotlightMedia {...props} />
     </Modal>
   );

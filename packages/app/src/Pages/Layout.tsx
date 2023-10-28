@@ -1,35 +1,50 @@
 import "./Layout.css";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { FormattedMessage, useIntl } from "react-intl";
+import { FormattedMessage } from "react-intl";
 import { useUserProfile } from "@snort/system-react";
-import { NostrLink, NostrPrefix, tryParseNostrLink } from "@snort/system";
 
 import messages from "./messages";
 
 import Icon from "Icons/Icon";
 import useLoginFeed from "Feed/LoginFeed";
-import { NoteCreator } from "Element/Event/NoteCreator";
 import { mapPlanName } from "./subscribe";
 import useLogin from "Hooks/useLogin";
 import Avatar from "Element/User/Avatar";
-import { profileLink } from "SnortUtils";
+import { isHalloween, isFormElement, isStPatricksDay, isChristmas } from "SnortUtils";
 import { getCurrentSubscription } from "Subscription";
 import Toaster from "Toaster";
-import Spinner from "Icons/Spinner";
-import { fetchNip05Pubkey } from "Nip05/Verifier";
 import { useTheme } from "Hooks/useTheme";
 import { useLoginRelays } from "Hooks/useLoginRelays";
-import { useNoteCreator } from "State/NoteCreator";
 import { LoginUnlock } from "Element/PinPrompt";
+import useKeyboardShortcut from "Hooks/useKeyboardShortcut";
+import { LoginStore } from "Login";
+import { NoteCreatorButton } from "Element/Event/NoteCreatorButton";
+import { ProfileLink } from "Element/User/ProfileLink";
+import SearchBox from "../Element/SearchBox";
+import SnortApi from "External/SnortApi";
+import useEventPublisher from "Hooks/useEventPublisher";
+import { base64 } from "@scure/base";
+import { unwrap } from "@snort/shared";
 
 export default function Layout() {
   const location = useLocation();
   const [pageClass, setPageClass] = useState("page");
+  const { id, stalker } = useLogin(s => ({ id: s.id, stalker: s.stalker ?? false }));
 
   useLoginFeed();
   useTheme();
   useLoginRelays();
+  useKeyboardShortcut(".", event => {
+    // if event happened in a form element, do nothing, otherwise focus on search input
+    if (event.target && !isFormElement(event.target as HTMLElement)) {
+      event.preventDefault();
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    }
+  });
 
   const shouldHideHeader = useMemo(() => {
     const hideOn = ["/login", "/new"];
@@ -56,46 +71,35 @@ export default function Layout() {
           </header>
         )}
         <Outlet />
-        <NoteCreatorButton />
+        <NoteCreatorButton className="note-create-button" />
         <Toaster />
       </div>
       <LoginUnlock />
+      {stalker && (
+        <div
+          className="stalker"
+          onClick={() => {
+            LoginStore.removeSession(id);
+          }}>
+          <button type="button" className="circle flex items-center">
+            <Icon name="close" />
+          </button>
+        </div>
+      )}
     </>
   );
 }
 
-const NoteCreatorButton = () => {
-  const location = useLocation();
-  const { readonly } = useLogin(s => ({ readonly: s.readonly }));
-  const { show, replyTo, update } = useNoteCreator(v => ({ show: v.show, replyTo: v.replyTo, update: v.update }));
-
-  const shouldHideNoteCreator = useMemo(() => {
-    const isReplyNoteCreatorShowing = replyTo && show;
-    const hideOn = ["/settings", "/messages", "/new", "/login", "/donate", "/e", "/subscribe"];
-    return readonly || isReplyNoteCreatorShowing || hideOn.some(a => location.pathname.startsWith(a));
-  }, [location, readonly]);
-
-  if (shouldHideNoteCreator) return;
-  return (
-    <>
-      <button
-        className="primary note-create-button"
-        onClick={() =>
-          update(v => {
-            v.replyTo = undefined;
-            v.show = true;
-          })
-        }>
-        <Icon name="plus" size={16} />
-      </button>
-      <NoteCreator key="global-note-creator" />
-    </>
-  );
-};
-
 const AccountHeader = () => {
   const navigate = useNavigate();
-  const { formatMessage } = useIntl();
+
+  useKeyboardShortcut("/", event => {
+    // if event happened in a form element, do nothing, otherwise focus on search input
+    if (event.target && !isFormElement(event.target as HTMLElement)) {
+      event.preventDefault();
+      document.querySelector<HTMLInputElement>(".search input")?.focus();
+    }
+  });
 
   const { publicKey, latestNotification, readNotifications, readonly } = useLogin(s => ({
     publicKey: s.publicKey,
@@ -104,31 +108,7 @@ const AccountHeader = () => {
     readonly: s.readonly,
   }));
   const profile = useUserProfile(publicKey);
-  const [search, setSearch] = useState("");
-  const [searching, setSearching] = useState(false);
-
-  async function searchThing() {
-    try {
-      setSearching(true);
-      const link = tryParseNostrLink(search);
-      if (link) {
-        navigate(`/${link.encode()}`);
-        return;
-      }
-      if (search.includes("@")) {
-        const [handle, domain] = search.split("@");
-        const pk = await fetchNip05Pubkey(handle, domain);
-        if (pk) {
-          navigate(`/${new NostrLink(NostrPrefix.PublicKey, pk).encode()}`);
-          return;
-        }
-      }
-      navigate(`/search/${encodeURIComponent(search)}`);
-    } finally {
-      setSearch("");
-      setSearching(false);
-    }
-  }
+  const { publisher } = useEventPublisher();
 
   const hasNotifications = useMemo(
     () => latestNotification > readNotifications,
@@ -148,6 +128,26 @@ const AccountHeader = () => {
         console.error(e);
       }
     }
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        if (reg && publisher) {
+          const api = new SnortApi(undefined, publisher);
+          const sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: (await api.getPushNotificationInfo()).publicKey,
+          });
+          await api.registerPushNotifications({
+            endpoint: sub.endpoint,
+            p256dh: base64.encode(new Uint8Array(unwrap(sub.getKey("p256dh")))),
+            auth: base64.encode(new Uint8Array(unwrap(sub.getKey("auth")))),
+            scope: `${location.protocol}//${location.hostname}`,
+          });
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   if (!publicKey) {
@@ -159,27 +159,7 @@ const AccountHeader = () => {
   }
   return (
     <div className="header-actions">
-      {!location.pathname.startsWith("/search") && (
-        <div className="search">
-          <input
-            type="text"
-            placeholder={formatMessage({ defaultMessage: "Search" })}
-            className="w-max"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={async e => {
-              if (e.key === "Enter") {
-                await searchThing();
-              }
-            }}
-          />
-          {searching ? (
-            <Spinner width={24} height={24} />
-          ) : (
-            <Icon name="search" size={24} onClick={() => navigate("/search")} />
-          )}
-        </div>
-      )}
+      {!location.pathname.startsWith("/search") && <SearchBox />}
       {!readonly && (
         <Link className="btn" to="/messages">
           <Icon name="mail" size={24} />
@@ -190,15 +170,9 @@ const AccountHeader = () => {
         <Icon name="bell-02" size={24} />
         {hasNotifications && <span className="has-unread"></span>}
       </Link>
-      <Avatar
-        pubkey={publicKey ?? ""}
-        user={profile}
-        onClick={() => {
-          if (profile) {
-            navigate(profileLink(profile.pubkey));
-          }
-        }}
-      />
+      <ProfileLink pubkey={publicKey} user={profile}>
+        <Avatar pubkey={publicKey} user={profile} />
+      </ProfileLink>
     </div>
   );
 };
@@ -207,14 +181,23 @@ function LogoHeader() {
   const { subscriptions } = useLogin();
   const currentSubscription = getCurrentSubscription(subscriptions);
 
+  const extra = () => {
+    if (isHalloween()) return "🎃";
+    if (isStPatricksDay()) return "🍀";
+    if (isChristmas()) return "🎄";
+  };
+
   return (
     <Link to="/" className="logo">
-      <h1>{process.env.APP_NAME}</h1>
+      <h1>
+        {extra()}
+        {CONFIG.appName}
+      </h1>
       {currentSubscription && (
-        <small className="flex">
-          <Icon name="diamond" size={10} className="mr5" />
+        <div className="flex items-center g4 text-sm font-semibold tracking-wider">
+          <Icon name="diamond" size={16} className="text-pro" />
           {mapPlanName(currentSubscription.type)}
-        </small>
+        </div>
       )}
     </Link>
   );

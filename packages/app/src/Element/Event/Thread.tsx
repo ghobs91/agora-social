@@ -2,9 +2,10 @@ import "./Thread.css";
 import { useMemo, useState, ReactNode, useContext } from "react";
 import { useIntl } from "react-intl";
 import { useNavigate, useParams } from "react-router-dom";
-import { TaggedNostrEvent, u256, NostrPrefix, EventExt, parseNostrLink } from "@snort/system";
+import { TaggedNostrEvent, u256, NostrPrefix, EventExt, parseNostrLink, NostrLink } from "@snort/system";
+import classNames from "classnames";
 
-import { getReactions, getAllReactions } from "SnortUtils";
+import { getAllLinkReactions, getLinkReactions } from "SnortUtils";
 import BackButton from "Element/BackButton";
 import Note from "Element/Event/Note";
 import NoteGhost from "Element/Event/NoteGhost";
@@ -50,6 +51,7 @@ const Subthread = ({ active, notes, related, chains, onNavigate }: SubthreadProp
             key={a.id}
             related={related}
             onClick={onNavigate}
+            threadChains={chains}
           />
           <div className="line-container"></div>
         </div>
@@ -82,18 +84,22 @@ const ThreadNote = ({ active, note, isLast, isLastSubthread, related, chains, on
   const [collapsed, setCollapsed] = useState(!activeInReplies);
   const hasMultipleNotes = replies.length > 1;
   const isLastVisibleNote = isLastSubthread && isLast && !hasMultipleNotes;
-  const className = `subthread-container ${isLast && collapsed ? "subthread-last" : "subthread-multi subthread-mid"}`;
+  const className = classNames(
+    "subthread-container",
+    isLast && collapsed ? "subthread-last" : "subthread-multi subthread-mid",
+  );
   return (
     <>
       <div className={className}>
         <Divider variant="small" />
         <Note
           highlight={active === note.id}
-          className={`thread-note ${isLastVisibleNote ? "is-last-note" : ""}`}
+          className={classNames("thread-note", { "is-last-note": isLastVisibleNote })}
           data={note}
           key={note.id}
           related={related}
           onClick={onNavigate}
+          threadChains={chains}
         />
         <div className="line-container"></div>
       </div>
@@ -154,16 +160,19 @@ const TierThree = ({ active, isLastSubthread, notes, related, chains, onNavigate
   return (
     <>
       <div
-        className={`subthread-container ${hasMultipleNotes ? "subthread-multi" : ""} ${
-          isLast ? "subthread-last" : "subthread-mid"
-        }`}>
+        className={classNames("subthread-container", {
+          "subthread-multi": hasMultipleNotes,
+          "subthread-last": isLast,
+          "subthread-mid": !isLast,
+        })}>
         <Divider variant="small" />
         <Note
           highlight={active === first.id}
-          className={`thread-note ${isLastSubthread && isLast ? "is-last-note" : ""}`}
+          className={classNames("thread-note", { "is-last-note": isLastSubthread && isLast })}
           data={first}
           key={first.id}
           related={related}
+          threadChains={chains}
         />
         <div className="line-container"></div>
       </div>
@@ -185,17 +194,20 @@ const TierThree = ({ active, isLastSubthread, notes, related, chains, onNavigate
         return (
           <div
             key={r.id}
-            className={`subthread-container ${lastReply ? "" : "subthread-multi"} ${
-              lastReply ? "subthread-last" : "subthread-mid"
-            }`}>
+            className={classNames("subthread-container", {
+              "subthread-multi": !lastReply,
+              "subthread-last": !lastReply,
+              "subthread-mid": lastReply,
+            })}>
             <Divider variant="small" />
             <Note
-              className={`thread-note ${lastNote ? "is-last-note" : ""}`}
+              className={classNames("thread-note", { "is-last-note": lastNote })}
               highlight={active === r.id}
               data={r}
               key={r.id}
               related={related}
               onClick={onNavigate}
+              threadChains={chains}
             />
             <div className="line-container"></div>
           </div>
@@ -205,9 +217,10 @@ const TierThree = ({ active, isLastSubthread, notes, related, chains, onNavigate
   );
 };
 
-export function ThreadRoute() {
+export function ThreadRoute({ id }: { id?: string }) {
   const params = useParams();
-  const link = parseNostrLink(params.id ?? "", NostrPrefix.Note);
+  const resolvedId = id ?? params.id;
+  const link = parseNostrLink(resolvedId ?? "", NostrPrefix.Note);
 
   return (
     <ThreadContextWrapper link={link}>
@@ -225,7 +238,7 @@ export function Thread(props: { onBack?: () => void; disableSpotlight?: boolean 
 
   function navigateThread(e: TaggedNostrEvent) {
     thread.setCurrent(e.id);
-    //router.navigate(`/e/${NostrLink.fromEvent(e).encode()}`, { replace: true })
+    //router.navigate(`/${NostrLink.fromEvent(e).encode()}`, { replace: true })
   }
 
   const parent = useMemo(() => {
@@ -247,9 +260,10 @@ export function Thread(props: { onBack?: () => void; disableSpotlight?: boolean 
           className={className}
           key={note.id}
           data={note}
-          related={getReactions(thread.reactions, note.id)}
+          related={getLinkReactions(thread.reactions, NostrLink.fromEvent(note))}
           options={{ showReactionsLink: true, showMediaSpotlight: !props.disableSpotlight }}
           onClick={navigateThread}
+          threadChains={thread.chains}
         />
       );
     } else {
@@ -267,9 +281,9 @@ export function Thread(props: { onBack?: () => void; disableSpotlight?: boolean 
         <Subthread
           active={thread.current}
           notes={replies}
-          related={getAllReactions(
+          related={getAllLinkReactions(
             thread.reactions,
-            replies.map(a => a.id),
+            replies.map(a => NostrLink.fromEvent(a)),
           )}
           chains={thread.chains}
           onNavigate={navigateThread}

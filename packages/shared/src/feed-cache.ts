@@ -1,6 +1,6 @@
 import debug from "debug";
-import { Table } from "dexie";
-import { unixNowMs, unwrap } from "./utils";
+import { removeUndefined, unixNowMs, unwrap } from "./utils";
+import { DexieTableLike } from "./dexie-like";
 
 type HookFn = () => void;
 
@@ -19,11 +19,11 @@ export abstract class FeedCache<TCached> {
   #changed = true;
   #hits = 0;
   #miss = 0;
-  protected table?: Table<TCached>;
+  protected table?: DexieTableLike<TCached>;
   protected onTable: Set<string> = new Set();
   protected cache: Map<string, TCached> = new Map();
 
-  constructor(name: string, table?: Table<TCached>) {
+  constructor(name: string, table?: DexieTableLike<TCached>) {
     this.#name = name;
     this.table = table;
     setInterval(() => {
@@ -44,6 +44,10 @@ export abstract class FeedCache<TCached> {
   async preload() {
     const keys = (await this.table?.toCollection().primaryKeys()) ?? [];
     this.onTable = new Set<string>(keys.map(a => a as string));
+  }
+
+  keysOnTable() {
+    return [...this.onTable];
   }
 
   hook(fn: HookFn, key: string | undefined) {
@@ -99,10 +103,7 @@ export abstract class FeedCache<TCached> {
         }
       });
     }
-    return keys
-      .map(a => this.cache.get(a))
-      .filter(a => a)
-      .map(a => unwrap(a));
+    return removeUndefined(keys.map(a => this.cache.get(a)));
   }
 
   async set(obj: TCached) {
@@ -176,18 +177,12 @@ export abstract class FeedCache<TCached> {
         key: a,
       }));
       const start = unixNowMs();
-      const fromCache = await this.table.bulkGet(mapped.filter(a => a.has).map(a => a.key));
-      const fromCacheFiltered = fromCache.filter(a => a !== undefined).map(a => unwrap(a));
-      fromCacheFiltered.forEach(a => {
+      const fromCache = removeUndefined(await this.table.bulkGet(mapped.filter(a => a.has).map(a => a.key)));
+      fromCache.forEach(a => {
         this.cache.set(this.key(a), a);
       });
-      this.notifyChange(fromCacheFiltered.map(a => this.key(a)));
-      debug(this.#name)(
-        `Loaded %d/%d in %d ms`,
-        fromCacheFiltered.length,
-        keys.length,
-        (unixNowMs() - start).toLocaleString(),
-      );
+      this.notifyChange(fromCache.map(a => this.key(a)));
+      debug(this.#name)(`Loaded %d/%d in %d ms`, fromCache.length, keys.length, (unixNowMs() - start).toLocaleString());
       return mapped.filter(a => !a.has).map(a => a.key);
     }
 
@@ -199,6 +194,8 @@ export abstract class FeedCache<TCached> {
     await this.table?.clear();
     this.cache.clear();
     this.onTable.clear();
+    this.#changed = true;
+    this.#hooks.forEach(h => h.fn());
   }
 
   snapshot() {

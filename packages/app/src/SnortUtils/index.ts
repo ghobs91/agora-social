@@ -13,7 +13,11 @@ import {
   NostrPrefix,
   NostrEvent,
   MetadataCache,
+  NostrLink,
+  UserMetadata,
 } from "@snort/system";
+import { Day } from "Const";
+import AnimalName from "Element/User/AnimalName";
 
 export const sha256 = (str: string | Uint8Array): u256 => {
   return utils.bytesToHex(hash(str));
@@ -73,13 +77,9 @@ export function parseId(id: string) {
 }
 
 export function bech32ToHex(str: string) {
-  try {
-    const nKey = bech32.decode(str, 1_000);
-    const buff = bech32.fromWords(nKey.words);
-    return utils.bytesToHex(Uint8Array.from(buff));
-  } catch (e) {
-    return str;
-  }
+  const nKey = bech32.decode(str, 10_000);
+  const buff = bech32.fromWords(nKey.words);
+  return bytesToHex(buff);
 }
 
 /**
@@ -88,13 +88,9 @@ export function bech32ToHex(str: string) {
  * @returns
  */
 export function bech32ToText(str: string) {
-  try {
-    const decoded = bech32.decode(str, 1000);
-    const buf = bech32.fromWords(decoded.words);
-    return new TextDecoder().decode(Uint8Array.from(buf));
-  } catch {
-    return "";
-  }
+  const nKey = bech32.decode(str, 10_000);
+  const buff = bech32.fromWords(nKey.words);
+  return new TextDecoder().decode(buff);
 }
 
 /**
@@ -106,17 +102,7 @@ export function eventLink(hex: u256, relays?: Array<string> | string) {
   const encoded = relays
     ? encodeTLV(NostrPrefix.Event, hex, Array.isArray(relays) ? relays : [relays])
     : hexToBech32(NostrPrefix.Note, hex);
-  return `/e/${encoded}`;
-}
-
-/**
- * Convert hex pubkey to bech32 link url
- */
-export function profileLink(hex: HexKey, relays?: Array<string> | string) {
-  const encoded = relays
-    ? encodeTLV(NostrPrefix.Profile, hex, Array.isArray(relays) ? relays : [relays])
-    : hexToBech32(NostrPrefix.PublicKey, hex);
-  return `/p/${encoded}`;
+  return `/${encoded}`;
 }
 
 /**
@@ -139,38 +125,20 @@ export function hexToBech32(hrp: string, hex?: string) {
     return "";
   }
 }
-
-/**
- * Reaction types
- */
-export const Reaction = {
-  Positive: "+",
-  Negative: "-",
-};
-
-/**
- * Return normalized reaction content
- */
-export function normalizeReaction(content: string) {
-  switch (content) {
-    case "-":
-      return Reaction.Negative;
-    case "👎":
-      return Reaction.Negative;
-    default:
-      return Reaction.Positive;
-  }
+export function getLinkReactions(
+  notes: ReadonlyArray<TaggedNostrEvent> | undefined,
+  link: NostrLink,
+  kind?: EventKind,
+) {
+  return notes?.filter(a => a.kind === (kind ?? a.kind) && link.isReplyToThis(a)) || [];
 }
 
-/**
- * Get reactions to a specific event (#e + kind filter)
- */
-export function getReactions(notes: readonly TaggedNostrEvent[] | undefined, id: u256, kind?: EventKind) {
-  return notes?.filter(a => a.kind === (kind ?? a.kind) && a.tags.some(a => a[0] === "e" && a[1] === id)) || [];
-}
-
-export function getAllReactions(notes: readonly TaggedNostrEvent[] | undefined, ids: Array<u256>, kind?: EventKind) {
-  return notes?.filter(a => a.kind === (kind ?? a.kind) && a.tags.some(a => a[0] === "e" && ids.includes(a[1]))) || [];
+export function getAllLinkReactions(
+  notes: readonly TaggedNostrEvent[] | undefined,
+  links: Array<NostrLink>,
+  kind?: EventKind,
+) {
+  return notes?.filter(a => a.kind === (kind ?? a.kind) && links.some(b => b.isReplyToThis(a))) || [];
 }
 
 export function deepClone<T>(obj: T) {
@@ -326,6 +294,10 @@ export const delay = (t: number) => {
 
 export function orderDescending<T>(arr: Array<T & { created_at: number }>) {
   return arr.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
+}
+
+export function orderAscending<T>(arr: Array<T & { created_at: number }>) {
+  return arr.sort((a, b) => (b.created_at > a.created_at ? -1 : 1));
 }
 
 export interface Magnet {
@@ -491,6 +463,57 @@ export function kvToObject<T>(o: string, sep?: string) {
   ) as T;
 }
 
-export function defaultAvatar(input: string) {
-  return `https://robohash.v0l.io/${input}.png`;
+export function defaultAvatar(input?: string) {
+  return `https://robohash.v0l.io/${input ?? "missing"}.png${isHalloween() ? "?set=set2" : ""}`;
+}
+
+export function isFormElement(target: HTMLElement): boolean {
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return true;
+  }
+
+  return false;
+}
+
+const ThisYear = new Date().getFullYear();
+const SeasonalEventsWindow = 7; // n days before
+const IsTheSeason = (target: Date) => {
+  const now = new Date();
+  const days = (target.getTime() - now.getTime()) / (Day * 1000);
+  return days > 0 && days <= SeasonalEventsWindow;
+};
+
+export const isHalloween = () => {
+  const event = new Date(ThisYear, 9, 31);
+  return IsTheSeason(event);
+};
+
+export const isStPatricksDay = () => {
+  const event = new Date(ThisYear, 2, 17);
+  return IsTheSeason(event);
+};
+
+export const isChristmas = () => {
+  const event = new Date(ThisYear, 11, 25);
+  return IsTheSeason(event);
+};
+
+export function getDisplayName(user: UserMetadata | undefined, pubkey: HexKey): string {
+  return getDisplayNameOrPlaceHolder(user, pubkey)[0];
+}
+
+export function getDisplayNameOrPlaceHolder(user: UserMetadata | undefined, pubkey: HexKey): [string, boolean] {
+  let name = hexToBech32(NostrPrefix.PublicKey, pubkey).substring(0, 12);
+  let isPlaceHolder = false;
+
+  if (typeof user?.display_name === "string" && user.display_name.length > 0) {
+    name = user.display_name;
+  } else if (typeof user?.name === "string" && user.name.length > 0) {
+    name = user.name;
+  } else if (pubkey && CONFIG.animalNamePlaceholders) {
+    name = AnimalName(pubkey);
+    isPlaceHolder = true;
+  }
+
+  return [name.trim(), isPlaceHolder];
 }

@@ -1,6 +1,7 @@
 import "./Text.css";
 import { ReactNode, useState } from "react";
 import { HexKey, ParsedFragment } from "@snort/system";
+import classNames from "classnames";
 
 import Invoice from "Element/Embed/Invoice";
 import Hashtag from "Element/Embed/Hashtag";
@@ -8,7 +9,7 @@ import HyperText from "Element/HyperText";
 import CashuNuts from "Element/Embed/CashuNuts";
 import RevealMedia from "./Event/RevealMedia";
 import { ProxyImg } from "./ProxyImg";
-import { SpotlightMediaModal } from "./Deck/SpotlightMedia";
+import { SpotlightMediaModal } from "./SpotlightMedia";
 import HighlightedText from "./HighlightedText";
 import { useTextTransformer } from "Hooks/useTextTransformCache";
 
@@ -183,6 +184,8 @@ export default function Text({
             if (nextElement && nextElement.type === "media" && nextElement.mimeType?.startsWith("image")) {
               galleryImages.push(nextElement);
               i++;
+            } else if (nextElement && nextElement.type === "text" && nextElement.content.trim().length === 0) {
+              i++; //skip over empty space text
             } else {
               break;
             }
@@ -247,12 +250,20 @@ export default function Text({
         chunks.push(<CashuNuts token={element.content} />);
       }
       if (element.type === "link" || (element.type === "media" && element.mimeType?.startsWith("unknown"))) {
-        chunks.push(
-          <HyperText link={element.content} depth={depth} showLinkPreview={!(disableLinkPreview ?? false)} />,
-        );
+        if (disableMedia ?? false) {
+          chunks.push(<DisableMedia content={element.content} />);
+        } else {
+          chunks.push(
+            <HyperText link={element.content} depth={depth} showLinkPreview={!(disableLinkPreview ?? false)} />,
+          );
+        }
       }
       if (element.type === "custom_emoji") {
         chunks.push(<ProxyImg src={element.content} size={15} className="custom-emoji" />);
+      }
+      if (element.type === "code_block") {
+        //chunks.push(<CodeBlock content={element.content} language={element.language} />);
+        chunks.push(<pre>{element.content}</pre>);
       }
       if (element.type === "text") {
         chunks.push(
@@ -266,7 +277,7 @@ export default function Text({
   };
 
   return (
-    <div dir="auto" className={`text${className ? ` ${className}` : ""}`} onClick={onClick}>
+    <div dir="auto" className={classNames("text", className)} onClick={onClick}>
       {renderContent()}
       {showSpotlight && <SpotlightMediaModal images={images} onClose={() => setShowSpotlight(false)} idx={imageIdx} />}
     </div>

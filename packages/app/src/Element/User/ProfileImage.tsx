@@ -1,15 +1,18 @@
 import "./ProfileImage.css";
 
-import React, { ReactNode, useMemo } from "react";
-import { Link } from "react-router-dom";
-import { HexKey, NostrPrefix, UserMetadata } from "@snort/system";
+import React, { ReactNode } from "react";
+import { HexKey, UserMetadata } from "@snort/system";
 import { useUserProfile } from "@snort/system-react";
+import { useHover } from "@uidotdev/usehooks";
+import classNames from "classnames";
 
-import { hexToBech32, profileLink } from "SnortUtils";
 import Avatar from "Element/User/Avatar";
 import Nip05 from "Element/User/Nip05";
 import useLogin from "Hooks/useLogin";
 import Icon from "Icons/Icon";
+import DisplayName from "./DisplayName";
+import { ProfileLink } from "./ProfileLink";
+import { ProfileCard } from "./ProfileCard";
 
 export interface ProfileImageProps {
   pubkey: HexKey;
@@ -26,6 +29,7 @@ export interface ProfileImageProps {
   imageOverlay?: ReactNode;
   showFollowingMark?: boolean;
   icons?: ReactNode;
+  showProfileCard?: boolean;
 }
 
 export default function ProfileImage({
@@ -43,15 +47,13 @@ export default function ProfileImage({
   onClick,
   showFollowingMark = true,
   icons,
+  showProfileCard,
 }: ProfileImageProps) {
   const user = useUserProfile(profile ? "" : pubkey) ?? profile;
   const nip05 = defaultNip ? defaultNip : user?.nip05;
   const { follows } = useLogin();
   const doesFollow = follows.item.includes(pubkey);
-
-  const name = useMemo(() => {
-    return overrideUsername ?? getDisplayName(user, pubkey);
-  }, [user, pubkey, overrideUsername]);
+  const [ref, hovering] = useHover<HTMLDivElement>();
 
   function handleClick(e: React.MouseEvent) {
     if (link === "") {
@@ -63,7 +65,7 @@ export default function ProfileImage({
   function inner() {
     return (
       <>
-        <div className="avatar-wrapper">
+        <div className="avatar-wrapper" ref={ref}>
           <Avatar
             pubkey={pubkey}
             user={user}
@@ -86,7 +88,7 @@ export default function ProfileImage({
         {showUsername && (
           <div className="f-ellipsis">
             <div className="flex g4 username">
-              <div>{name.trim()}</div>
+              {overrideUsername ? overrideUsername : <DisplayName pubkey={pubkey} user={user} />}
               {nip05 && <Nip05 nip05={nip05} pubkey={pubkey} verifyNip={verifyNip} />}
             </div>
             <div className="subheader">{subHeader}</div>
@@ -96,30 +98,35 @@ export default function ProfileImage({
     );
   }
 
+  function profileCard() {
+    if ((showProfileCard ?? true) && user) {
+      return <ProfileCard pubkey={pubkey} user={user} show={hovering} ref={ref} />;
+    }
+    return null;
+  }
+
   if (link === "") {
     return (
-      <div className={`pfp${className ? ` ${className}` : ""}`} onClick={handleClick}>
-        {inner()}
-      </div>
+      <>
+        <div className={classNames("pfp", className)} onClick={handleClick}>
+          {inner()}
+        </div>
+        {profileCard()}
+      </>
     );
   } else {
     return (
-      <Link
-        className={`pfp${className ? ` ${className}` : ""}`}
-        to={link === undefined ? profileLink(pubkey) : link}
-        onClick={handleClick}>
-        {inner()}
-      </Link>
+      <>
+        <ProfileLink
+          pubkey={pubkey}
+          className={classNames("pfp", className)}
+          user={user}
+          explicitLink={link}
+          onClick={handleClick}>
+          {inner()}
+        </ProfileLink>
+        {profileCard()}
+      </>
     );
   }
-}
-
-export function getDisplayName(user: UserMetadata | undefined, pubkey: HexKey) {
-  let name = hexToBech32(NostrPrefix.PublicKey, pubkey).substring(0, 12);
-  if (typeof user?.display_name === "string" && user.display_name.length > 0) {
-    name = user.display_name;
-  } else if (typeof user?.name === "string" && user.name.length > 0) {
-    name = user.name;
-  }
-  return name;
 }

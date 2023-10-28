@@ -1,8 +1,8 @@
 import debug from "debug";
 
-import { unwrap, sanitizeRelayUrl, ExternalStore, FeedCache } from "@snort/shared";
+import { unwrap, sanitizeRelayUrl, ExternalStore, FeedCache, removeUndefined } from "@snort/shared";
 import { NostrEvent, TaggedNostrEvent } from "./nostr";
-import { AuthHandler, Connection, RelaySettings, ConnectionStateSnapshot } from "./connection";
+import { AuthHandler, Connection, RelaySettings, ConnectionStateSnapshot, OkResponse } from "./connection";
 import { Query } from "./query";
 import { NoteCollection, NoteStore, NoteStoreSnapshotData } from "./note-collection";
 import { BuiltRawReqFilter, RequestBuilder, RequestStrategy } from "./request-builder";
@@ -16,8 +16,9 @@ import {
   UserProfileCache,
   UserRelaysCache,
   RelayMetricCache,
-  db,
   UsersRelays,
+  SnortSystemDb,
+  EventExt,
 } from ".";
 import { EventsCache } from "./cache/events";
 import { RelayCache } from "./gossip-model";
@@ -80,6 +81,11 @@ export class NostrSystem extends ExternalStore<SystemSnapshot> implements System
    */
   #queryOptimizer: QueryOptimizer;
 
+  /**
+   * Check event signatures (reccomended)
+   */
+  checkSigs: boolean;
+
   constructor(props: {
     authHandler?: AuthHandler;
     relayCache?: FeedCache<UsersRelays>;
@@ -87,19 +93,23 @@ export class NostrSystem extends ExternalStore<SystemSnapshot> implements System
     relayMetrics?: FeedCache<RelayMetrics>;
     eventsCache?: FeedCache<NostrEvent>;
     queryOptimizer?: QueryOptimizer;
+    db?: SnortSystemDb;
+    checkSigs?: boolean;
   }) {
     super();
     this.#handleAuth = props.authHandler;
-    this.#relayCache = props.relayCache ?? new UserRelaysCache();
-    this.#profileCache = props.profileCache ?? new UserProfileCache();
-    this.#relayMetricsCache = props.relayMetrics ?? new RelayMetricCache();
-    this.#eventsCache = props.eventsCache ?? new EventsCache();
+    this.#relayCache = props.relayCache ?? new UserRelaysCache(props.db?.userRelays);
+    this.#profileCache = props.profileCache ?? new UserProfileCache(props.db?.users);
+    this.#relayMetricsCache = props.relayMetrics ?? new RelayMetricCache(props.db?.relayMetrics);
+    this.#eventsCache = props.eventsCache ?? new EventsCache(props.db?.events);
     this.#queryOptimizer = props.queryOptimizer ?? DefaultQueryOptimizer;
 
     this.#profileLoader = new ProfileLoaderService(this, this.#profileCache);
     this.#relayMetrics = new RelayMetricHandler(this.#relayMetricsCache);
+    this.checkSigs = props.checkSigs ?? true;
     this.#cleanup();
   }
+
   HandleAuth?: AuthHandler | undefined;
 
   get ProfileLoader() {
@@ -122,7 +132,6 @@ export class NostrSystem extends ExternalStore<SystemSnapshot> implements System
    * Setup caches
    */
   async Init() {
-    db.ready = await db.isAvailable();
     const t = [
       this.#relayCache.preload(),
       this.#profileCache.preload(),
@@ -177,6 +186,15 @@ export class NostrSystem extends ExternalStore<SystemSnapshot> implements System
   }
 
   #onEvent(sub: string, ev: TaggedNostrEvent) {
+    if (!EventExt.isValid(ev)) {
+      this.#log("Rejecting invalid event %O", ev);
+      return;
+    }
+    if (this.checkSigs && !EventExt.verify(ev)) {
+      this.#log("Invalid sig %O", ev);
+      return;
+    }
+
     for (const [, v] of this.Queries) {
       v.handleEvent(sub, ev);
     }
@@ -353,35 +371,45 @@ export class NostrSystem extends ExternalStore<SystemSnapshot> implements System
   /**
    * Send events to writable relays
    */
-  BroadcastEvent(ev: NostrEvent) {
-    for (const [, s] of this.#sockets) {
-      if (!s.Ephemeral) {
-        s.SendEvent(ev);
-      }
-    }
+  async BroadcastEvent(ev: NostrEvent, cb?: (rsp: OkResponse) => void) {
+    const socks = [...this.#sockets.values()].filter(a => !a.Ephemeral && a.Settings.write);
+    const oks = await Promise.all(
+      socks.map(async s => {
+        try {
+          const rsp = await s.SendAsync(ev);
+          cb?.(rsp);
+          return rsp;
+        } catch (e) {
+          console.error(e);
+        }
+        return;
+      }),
+    );
+    return removeUndefined(oks);
   }
 
   /**
    * Write an event to a relay then disconnect
    */
-  async WriteOnceToRelay(address: string, ev: NostrEvent) {
+  async WriteOnceToRelay(address: string, ev: NostrEvent): Promise<OkResponse> {
     const addrClean = sanitizeRelayUrl(address);
     if (!addrClean) {
       throw new Error("Invalid relay address");
     }
 
-    if (this.#sockets.has(addrClean)) {
-      await this.#sockets.get(addrClean)?.SendAsync(ev);
+    const existing = this.#sockets.get(addrClean);
+    if (existing) {
+      return await existing.SendAsync(ev);
     } else {
-      return await new Promise<void>((resolve, reject) => {
+      return await new Promise<OkResponse>((resolve, reject) => {
         const c = new Connection(address, { write: true, read: true }, this.#handleAuth?.bind(this), true);
 
-        const t = setTimeout(reject, 5_000);
+        const t = setTimeout(reject, 10_000);
         c.OnConnected = async () => {
           clearTimeout(t);
-          await c.SendAsync(ev);
+          const rsp = await c.SendAsync(ev);
           c.Close();
-          resolve();
+          resolve(rsp);
         };
         c.Connect();
       });

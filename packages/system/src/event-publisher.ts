@@ -165,14 +165,14 @@ export class EventPublisher {
     amount: number,
     author: HexKey,
     relays: Array<string>,
-    note?: HexKey,
+    note?: NostrLink,
     msg?: string,
     fnExtra?: EventBuilderHook,
   ) {
     const eb = this.#eb(EventKind.ZapRequest);
     eb.content(msg ?? "");
     if (note) {
-      eb.tag(["e", note]);
+      eb.tag(unwrap(note.toEventTag()));
     }
     eb.tag(["p", author]);
     eb.tag(["relays", ...relays.map(a => a.trim())]);
@@ -189,13 +189,14 @@ export class EventPublisher {
     const eb = this.#eb(EventKind.TextNote);
     eb.content(msg);
 
+    const link = NostrLink.fromEvent(replyTo);
     const thread = EventExt.extractThread(replyTo);
     if (thread) {
       const rootOrReplyAsRoot = thread.root || thread.replyTo;
       if (rootOrReplyAsRoot) {
         eb.tag([rootOrReplyAsRoot.key, rootOrReplyAsRoot.value ?? "", rootOrReplyAsRoot.relay ?? "", "root"]);
       }
-      eb.tag([...(NostrLink.fromEvent(replyTo).toEventTag() ?? []), "reply"]);
+      eb.tag([...unwrap(link.toEventTag()), "reply"]);
 
       eb.tag(["p", replyTo.pubkey]);
       for (const pk of thread.pubKeys) {
@@ -205,7 +206,7 @@ export class EventPublisher {
         eb.tag(["p", pk]);
       }
     } else {
-      eb.tag([...(NostrLink.fromEvent(replyTo).toEventTag() ?? []), "reply"]);
+      eb.tag([...unwrap(link.toEventTag()), "root"]);
       // dont tag self in replies
       if (replyTo.pubkey !== this.#pubKey) {
         eb.tag(["p", replyTo.pubkey]);
@@ -219,7 +220,7 @@ export class EventPublisher {
   async react(evRef: NostrEvent, content = "+") {
     const eb = this.#eb(EventKind.Reaction);
     eb.content(content);
-    eb.tag(["e", evRef.id]);
+    eb.tag(unwrap(NostrLink.fromEvent(evRef).toEventTag()));
     eb.tag(["p", evRef.pubkey]);
     return await this.#sign(eb);
   }
@@ -269,7 +270,7 @@ export class EventPublisher {
    */
   async repost(note: NostrEvent) {
     const eb = this.#eb(EventKind.Repost);
-    eb.tag(["e", note.id, ""]);
+    eb.tag(unwrap(NostrLink.fromEvent(note).toEventTag()));
     eb.tag(["p", note.pubkey]);
     return await this.#sign(eb);
   }

@@ -1,11 +1,9 @@
 import "./Profile.css";
 import { useEffect, useState } from "react";
-import FormattedMessage from "Element/FormattedMessage";
 import { useNavigate } from "react-router-dom";
 import { mapEventToProfile } from "@snort/system";
 import { useUserProfile } from "@snort/system-react";
 
-import { System } from "index";
 import useEventPublisher from "Hooks/useEventPublisher";
 import { openFile } from "SnortUtils";
 import useFileUpload from "Upload";
@@ -14,6 +12,7 @@ import { UserCache } from "Cache";
 import useLogin from "Hooks/useLogin";
 import Icon from "Icons/Icon";
 import Avatar from "Element/User/Avatar";
+import { FormattedMessage } from "react-intl";
 
 export interface ProfileSettingsProps {
   avatar?: boolean;
@@ -24,7 +23,7 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
   const navigate = useNavigate();
   const { publicKey: id, readonly } = useLogin(s => ({ publicKey: s.publicKey, readonly: s.readonly }));
   const user = useUserProfile(id ?? "");
-  const publisher = useEventPublisher();
+  const { publisher, system } = useEventPublisher();
   const uploader = useFileUpload();
 
   const [name, setName] = useState<string>();
@@ -70,7 +69,7 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
 
     if (publisher) {
       const ev = await publisher.metadata(userCopy);
-      System.BroadcastEvent(ev);
+      system.BroadcastEvent(ev);
 
       const newProfile = mapEventToProfile(ev);
       if (newProfile) {
@@ -108,8 +107,8 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
 
   function editor() {
     return (
-      <div className="flex f-col g24">
-        <div className="flex f-col w-max g8">
+      <div className="flex flex-col g24">
+        <div className="flex flex-col w-max g8">
           <h4>
             <FormattedMessage defaultMessage="Name" />
           </h4>
@@ -121,7 +120,7 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
             disabled={readonly}
           />
         </div>
-        <div className="flex f-col w-max g8">
+        <div className="flex flex-col w-max g8">
           <h4>
             <FormattedMessage defaultMessage="About" />
           </h4>
@@ -131,7 +130,7 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
             value={about}
             disabled={readonly}></textarea>
         </div>
-        <div className="flex f-col w-max g8">
+        <div className="flex flex-col w-max g8">
           <h4>
             <FormattedMessage defaultMessage="Website" />
           </h4>
@@ -143,11 +142,11 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
             disabled={readonly}
           />
         </div>
-        <div className="flex f-col w-max g8">
+        <div className="flex flex-col w-max g8">
           <h4>
             <FormattedMessage defaultMessage="Nostr Address" />
           </h4>
-          <div className="flex f-col g8 w-max">
+          <div className="flex flex-col g8 w-max">
             <input
               type="text"
               className="w-max"
@@ -159,16 +158,19 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
               <FormattedMessage defaultMessage="Usernames are not unique on Nostr. The nostr address is your unique human-readable address that is unique to you upon registration." />
             </small>
             <div className="flex g12">
-              <button className="flex f-center" type="button" onClick={() => navigate("/nostr-address")}>
+              <button className="flex items-center" type="button" onClick={() => navigate("/nostr-address")}>
                 <FormattedMessage defaultMessage="Buy nostr address" />
               </button>
-              <button className="flex f-center secondary" type="button" onClick={() => navigate("/free-nostr-address")}>
+              <button
+                className="flex items-center secondary"
+                type="button"
+                onClick={() => navigate("/free-nostr-address")}>
                 <FormattedMessage defaultMessage="Get a free one" />
               </button>
             </div>
           </div>
         </div>
-        <div className="flex f-col w-max g8">
+        <div className="flex flex-col w-max g8">
           <h4>
             <FormattedMessage defaultMessage="Lightning Address" />
           </h4>
@@ -191,7 +193,7 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
     if (!id) return null;
     return (
       <>
-        <div className="flex f-center image-settings">
+        <div className="flex justify-center items-center image-settings">
           {(props.banner ?? true) && (
             <div
               style={{
@@ -206,7 +208,11 @@ export default function ProfileSettings(props: ProfileSettingsProps) {
           {(props.avatar ?? true) && (
             <div className="avatar-stack">
               <Avatar pubkey={id} user={user} image={picture} />
-              <AsyncButton type="button" className="btn-rnd" onClick={() => setNewAvatar()} disabled={readonly}>
+              <AsyncButton
+                type="button"
+                className="circle flex align-centerjustify-between"
+                onClick={() => setNewAvatar()}
+                disabled={readonly}>
                 <Icon name="upload-01" />
               </AsyncButton>
             </div>

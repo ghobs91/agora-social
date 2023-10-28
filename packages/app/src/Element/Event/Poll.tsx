@@ -1,4 +1,4 @@
-import { TaggedNostrEvent, ParsedZap } from "@snort/system";
+import { TaggedNostrEvent, ParsedZap, NostrLink } from "@snort/system";
 import { LNURL } from "@snort/shared";
 import { useState } from "react";
 import { FormattedMessage, FormattedNumber, useIntl } from "react-intl";
@@ -21,7 +21,7 @@ type PollTally = "zaps" | "pubkeys";
 
 export default function Poll(props: PollProps) {
   const { formatMessage } = useIntl();
-  const publisher = useEventPublisher();
+  const { publisher } = useEventPublisher();
   const { wallet } = useWallet();
   const { preferences: prefs, publicKey: myPubKey, relays } = useLogin();
   const pollerProfile = useUserProfile(props.ev.pubkey);
@@ -58,7 +58,7 @@ export default function Poll(props: PollProps) {
 
       setVoting(opt);
       const r = Object.keys(relays.item);
-      const zap = await publisher.zap(amount * 1000, props.ev.pubkey, r, props.ev.id, undefined, eb =>
+      const zap = await publisher.zap(amount * 1000, props.ev.pubkey, r, NostrLink.fromEvent(props.ev), undefined, eb =>
         eb.tag(["poll_option", opt.toString()]),
       );
 
@@ -108,7 +108,7 @@ export default function Poll(props: PollProps) {
 
   return (
     <>
-      <div className="flex f-space p">
+      <div className="flex justify-between p">
         <small>
           <FormattedMessage
             defaultMessage="You are voting with {amount} sats"
@@ -147,7 +147,7 @@ export default function Poll(props: PollProps) {
           const weight = totalVotes === 0 ? 0 : total / totalVotes;
           return (
             <div key={a[1]} className="flex" onClick={e => zapVote(e, opt)}>
-              <div className="f-grow">{opt === voting ? <Spinner /> : <>{desc}</>}</div>
+              <div className="grow">{opt === voting ? <Spinner /> : <>{desc}</>}</div>
               {showResults && (
                 <>
                   <div className="flex">

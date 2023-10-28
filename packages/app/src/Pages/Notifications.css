@@ -52,3 +52,12 @@
   max-width: 100%;
   max-height: 300px; /* Cap images in notifications to 300px height */
 }
+
+.summary-tooltip {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--gray-superdark);
+  box-shadow: 0px 2px 4px 0px rgba(0, 0, 0, 0.05);
+}

@@ -1,20 +1,14 @@
-import { FormattedMessage, FormattedDate, FormattedNumber, useIntl } from "react-intl";
-import { useState } from "react";
+import { FormattedMessage, FormattedDate, FormattedNumber } from "react-intl";
 
-import SnortApi, { Subscription, SubscriptionError } from "SnortApi";
-import { mapPlanName, mapSubscriptionErrorCode } from ".";
-import AsyncButton from "Element/AsyncButton";
+import { Subscription } from "External/SnortApi";
+import { mapPlanName } from ".";
 import Icon from "Icons/Icon";
-import useEventPublisher from "Hooks/useEventPublisher";
-import SendSats from "Element/SendSats";
 import Nip5Service from "Element/Nip5Service";
 import { SnortNostrAddressService } from "Pages/NostrAddressPage";
 import Nip05 from "Element/User/Nip05";
+import { RenewSub } from "./RenewSub";
 
 export default function SubscriptionCard({ sub }: { sub: Subscription }) {
-  const publisher = useEventPublisher();
-  const { formatMessage } = useIntl();
-
   const created = new Date(sub.created * 1000);
   const expires = new Date(sub.expires * 1000);
   const now = new Date();
@@ -23,21 +17,6 @@ export default function SubscriptionCard({ sub }: { sub: Subscription }) {
   const isExpired = sub.state === "expired";
   const isNew = sub.state === "new";
   const isPaid = sub.state === "paid";
-
-  const [invoice, setInvoice] = useState("");
-  const [error, setError] = useState<SubscriptionError>();
-
-  async function renew(id: string) {
-    const api = new SnortApi(undefined, publisher);
-    try {
-      const rsp = await api.renewSubscription(id);
-      setInvoice(rsp.pr);
-    } catch (e) {
-      if (e instanceof SubscriptionError) {
-        setError(e);
-      }
-    }
-  }
 
   function subFeatures() {
     return (
@@ -114,24 +93,9 @@ export default function SubscriptionCard({ sub }: { sub: Subscription }) {
             </p>
           )}
         </div>
-        {(isExpired || isNew) && (
-          <div className="flex">
-            <AsyncButton onClick={() => renew(sub.id)}>
-              {isExpired ? <FormattedMessage defaultMessage="Renew" /> : <FormattedMessage defaultMessage="Pay Now" />}
-            </AsyncButton>
-          </div>
-        )}
+        {(isExpired || isNew) && <RenewSub sub={sub} />}
         {isPaid && subFeatures()}
       </div>
-      <SendSats
-        invoice={invoice}
-        show={invoice !== ""}
-        onClose={() => setInvoice("")}
-        title={formatMessage({
-          defaultMessage: "Pay for subscription",
-        })}
-      />
-      {error && <b className="error">{mapSubscriptionErrorCode(error)}</b>}
     </>
   );
 }

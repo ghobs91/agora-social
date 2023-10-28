@@ -9,7 +9,7 @@ import useEventPublisher from "Hooks/useEventPublisher";
 import { LoginStore, createPublisher, sessionNeedsPin } from "Login";
 import Modal from "./Modal";
 import AsyncButton from "./AsyncButton";
-import { WasmPowWorker } from "index";
+import { GetPowWorker } from "index";
 
 export function PinPrompt({
   onResult,
@@ -63,7 +63,7 @@ export function PinPrompt({
             submitButtonRef.current.click();
           }
         }}>
-        <div className="flex-column g12">
+        <div className="flex flex-col g12">
           <h2>
             <FormattedMessage defaultMessage="Enter Pin" />
           </h2>
@@ -93,7 +93,7 @@ export function PinPrompt({
 
 export function LoginUnlock() {
   const login = useLogin();
-  const publisher = useEventPublisher();
+  const { publisher } = useEventPublisher();
 
   async function encryptMigration(pin: string) {
     const k = unwrap(login.privateKey);
@@ -101,7 +101,7 @@ export function LoginUnlock() {
 
     const pub = EventPublisher.privateKey(k);
     if (login.preferences.pow) {
-      pub.pow(login.preferences.pow, new WasmPowWorker());
+      pub.pow(login.preferences.pow, GetPowWorker());
     }
     LoginStore.setPublisher(login.id, pub);
     LoginStore.updateSession({
@@ -118,7 +118,7 @@ export function LoginUnlock() {
     const pub = createPublisher(login);
     if (pub) {
       if (login.preferences.pow) {
-        pub.pow(login.preferences.pow, new WasmPowWorker());
+        pub.pow(login.preferences.pow, GetPowWorker());
       }
       LoginStore.setPublisher(login.id, pub);
       LoginStore.updateSession({
@@ -145,7 +145,7 @@ export function LoginUnlock() {
               <FormattedMessage
                 defaultMessage="Enter a pin to encrypt your private key, you must enter this pin every time you open {site}."
                 values={{
-                  site: process.env.APP_NAME_CAPITALIZED,
+                  site: CONFIG.appNameCapitalized,
                 }}
               />
             </p>

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { EventKind, NoteCollection, RequestBuilder } from "@snort/system";
+import { EventKind, NostrLink, NoteCollection, RequestBuilder } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
 import { unixNow } from "@snort/shared";
 
 import useTimelineWindow from "Hooks/useTimelineWindow";
 import useLogin from "Hooks/useLogin";
 import { SearchRelays } from "Const";
+import { useReactions } from "./Reactions";
 
 export interface TimelineFeedOptions {
   method: "TIME_RANGE" | "LIMIT_UNTIL";
@@ -17,7 +18,7 @@ export interface TimelineSubject {
   type: "pubkey" | "hashtag" | "global" | "ptag" | "post_keyword" | "profile_keyword";
   discriminator: string;
   items: string[];
-  relay?: string;
+  relay?: Array<string>;
   streams?: boolean;
 }
 
@@ -45,7 +46,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
       );
 
     if (subject.relay) {
-      f.relay(subject.relay);
+      subject.relay.forEach(r => f.relay(r));
     }
     switch (subject.type) {
       case "pubkey": {
@@ -88,7 +89,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     const rb = createBuilder();
     if (rb) {
       if (options.method === "LIMIT_UNTIL") {
-        rb.filter.until(until).limit(200);
+        rb.filter.until(until).limit(100);
       } else {
         rb.filter.since(since).until(until);
         if (since === undefined) {
@@ -131,6 +132,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
   }, [pref.autoShowLatest, createBuilder]);
 
   const latest = useRequestBuilder(NoteCollection, subRealtime);
+  const reactions = useReactions(`${sub?.id}-reactions`, main.data?.map(a => NostrLink.fromEvent(a)) ?? []);
 
   useEffect(() => {
     // clear store if changing relays
@@ -140,7 +142,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
 
   return {
     main: main.data,
-    related: [],
+    related: reactions.data,
     latest: latest.data,
     loading: main.loading(),
     loadMore: () => {

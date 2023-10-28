@@ -2,7 +2,7 @@ import "./LinkPreview.css";
 import { CSSProperties, useEffect, useState } from "react";
 
 import Spinner from "Icons/Spinner";
-import SnortApi, { LinkPreviewData } from "SnortApi";
+import SnortApi, { LinkPreviewData } from "External/SnortApi";
 import useImgProxy from "Hooks/useImgProxy";
 import { MediaElement } from "Element/Embed/MediaElement";
 
@@ -81,7 +81,7 @@ const LinkPreview = ({ url }: { url: string }) => {
           </div>
         </a>
       )}
-      {!preview && <Spinner className="f-center" />}
+      {!preview && <Spinner className="items-center" />}
     </div>
   );
 };

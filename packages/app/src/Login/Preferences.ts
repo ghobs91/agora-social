@@ -86,16 +86,20 @@ export interface UserPreferences {
    * Show user status messages on profiles
    */
   showStatus?: boolean;
+
+  /**
+   * Check event signatures
+   */
+  checkSigs: boolean;
 }
 
 export const DefaultPreferences = {
-  language: "en",
   enableReactions: true,
   reactionEmoji: "+",
   autoLoadMedia: "all",
   theme: "system",
   confirmReposts: false,
-  showDebugMenus: false,
+  showDebugMenus: true,
   autoShowLatest: false,
   fileUploader: "void.cat",
   imgProxyConfig: DefaultImgProxy,
@@ -105,4 +109,5 @@ export const DefaultPreferences = {
   telemetry: true,
   showBadges: false,
   showStatus: true,
+  checkSigs: false,
 } as UserPreferences;

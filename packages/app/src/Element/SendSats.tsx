@@ -1,9 +1,8 @@
 import "./SendSats.css";
-import React, { ReactNode, useContext, useEffect, useState } from "react";
+import React, { ReactNode, useEffect, useState } from "react";
 import { useIntl, FormattedMessage } from "react-intl";
 
 import { HexKey } from "@snort/system";
-import { SnortContext } from "@snort/system-react";
 import { LNURLSuccessAction } from "@snort/shared";
 
 import { formatShort } from "Number";
@@ -48,8 +47,7 @@ export default function SendSats(props: SendSatsProps) {
   const [success, setSuccess] = useState<LNURLSuccessAction>();
   const [amount, setAmount] = useState<SendSatsInputSelection>();
 
-  const system = useContext(SnortContext);
-  const publisher = useEventPublisher();
+  const { publisher, system } = useEventPublisher();
   const walletState = useWallet();
   const wallet = walletState.wallet;
 
@@ -103,7 +101,7 @@ export default function SendSats(props: SendSatsProps) {
   function successAction() {
     if (!success) return null;
     return (
-      <div className="flex f-center">
+      <div className="flex items-center">
         <p className="flex g12">
           <Icon name="check" className="success" />
           {success?.description ?? <FormattedMessage defaultMessage="Paid" />}
@@ -155,7 +153,7 @@ export default function SendSats(props: SendSatsProps) {
       const total = props.targets.reduce((acc, v) => (acc += v.weight), 0);
 
       return (
-        <div className="flex-column g12">
+        <div className="flex flex-col g12">
           <h2>
             {zapper?.canZap() ? (
               <FormattedMessage defaultMessage="Send zap splits to" />
@@ -181,9 +179,9 @@ export default function SendSats(props: SendSatsProps) {
   if (!(props.show ?? false)) return null;
   return (
     <Modal id="send-sats" className="lnurl-modal" onClose={onClose}>
-      <div className="p flex-column g12">
+      <div className="p flex flex-col g12">
         <div className="flex g12">
-          <div className="flex f-grow">{props.title || title()}</div>
+          <div className="flex items-center grow">{props.title || title()}</div>
           <div onClick={onClose}>
             <Icon name="close" />
           </div>
@@ -312,7 +310,7 @@ function SendSatsInput(props: {
           type="number"
           min={min}
           max={max}
-          className="f-grow"
+          className="grow"
           placeholder={formatMessage(messages.Custom)}
           value={customAmount}
           onChange={e => setCustomAmount(parseInt(e.target.value))}
@@ -329,8 +327,8 @@ function SendSatsInput(props: {
   }
 
   return (
-    <div className="flex-column g24">
-      <div className="flex-column g8">
+    <div className="flex flex-col g24">
+      <div className="flex flex-col g8">
         <h3>
           <FormattedMessage defaultMessage="Zap amount in sats" />
         </h3>
@@ -340,7 +338,7 @@ function SendSatsInput(props: {
           <input
             type="text"
             placeholder={formatMessage(messages.Comment)}
-            className="f-grow"
+            className="grow"
             maxLength={props.zapper.maxComment()}
             onChange={e => setComment(e.target.value)}
           />
@@ -348,11 +346,9 @@ function SendSatsInput(props: {
       </div>
       <SendSatsZapTypeSelector zapType={zapType} setZapType={setZapType} />
       {(amount ?? 0) > 0 && (
-        <AsyncButton className="zap-action" onClick={() => props.onNextStage(getValue())}>
-          <div className="zap-action-container">
-            <Icon name="zap" />
-            <FormattedMessage defaultMessage="Zap {n} sats" values={{ n: formatShort(amount) }} />
-          </div>
+        <AsyncButton onClick={() => props.onNextStage(getValue())}>
+          <Icon name="zap" />
+          <FormattedMessage defaultMessage="Zap {n} sats" values={{ n: formatShort(amount) }} />
         </AsyncButton>
       )}
     </div>
@@ -367,7 +363,7 @@ function SendSatsZapTypeSelector({ zapType, setZapType }: { zapType: ZapType; se
     </button>
   );
   return (
-    <div className="flex-column g8">
+    <div className="flex flex-col g8">
       <h3>
         <FormattedMessage defaultMessage="Zap Type" />
       </h3>
@@ -391,13 +387,13 @@ function SendSatsInvoice(props: {
   onInvoicePaid: () => void;
 }) {
   return (
-    <div className="flex-column g12 txt-center">
+    <div className="flex flex-col items-center g12 txt-center">
       {props.notice && <b className="error">{props.notice}</b>}
       {props.invoice.map(v => (
         <>
           <QrCode data={v.pr} link={`lightning:${v.pr}`} />
-          <div className="flex-column g12">
-            <Copy text={v.pr} maxSize={26} className="f-center" />
+          <div className="flex flex-col g12">
+            <Copy text={v.pr} maxSize={26} className="items-center" />
             <a href={`lightning:${v.pr}`}>
               <button type="button">
                 <FormattedMessage defaultMessage="Open Wallet" />

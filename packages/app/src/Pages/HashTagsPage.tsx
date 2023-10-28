@@ -1,12 +1,11 @@
 import { useMemo } from "react";
 import { useParams } from "react-router-dom";
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 
 import Timeline from "Element/Feed/Timeline";
 import useEventPublisher from "Hooks/useEventPublisher";
 import useLogin from "Hooks/useLogin";
 import { setTags } from "Login";
-import { System } from "index";
 
 const HashTagsPage = () => {
   const params = useParams();
@@ -15,12 +14,12 @@ const HashTagsPage = () => {
   const isFollowing = useMemo(() => {
     return login.tags.item.includes(tag);
   }, [login, tag]);
-  const publisher = useEventPublisher();
+  const { publisher, system } = useEventPublisher();
 
   async function followTags(ts: string[]) {
     if (publisher) {
       const ev = await publisher.tags(ts);
-      System.BroadcastEvent(ev);
+      system.BroadcastEvent(ev);
       setTags(login, ts, ev.created_at * 1000);
     }
   }

@@ -1,23 +1,16 @@
 import { useEffect, useState } from "react";
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 import { HexKey } from "@snort/system";
 
-import { ApiHost, KieranPubKey, SnortPubKey } from "Const";
+import { ApiHost, DeveloperAccounts, SnortPubKey } from "Const";
 import ProfilePreview from "Element/User/ProfilePreview";
 import ZapButton from "Element/Event/ZapButton";
 import { bech32ToHex } from "SnortUtils";
-import SnortApi, { RevenueSplit, RevenueToday } from "SnortApi";
+import SnortApi, { RevenueSplit, RevenueToday } from "External/SnortApi";
 import Modal from "Element/Modal";
 import AsyncButton from "Element/AsyncButton";
 import QrCode from "Element/QrCode";
 import Copy from "Element/Copy";
-
-const Developers = [
-  bech32ToHex(KieranPubKey), // kieran
-  bech32ToHex("npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk"), // Martti
-  bech32ToHex("npub107jk7htfv243u0x5ynn43scq9wrxtaasmrwwa8lfu2ydwag6cx2quqncxg"), // verbiricha
-  bech32ToHex("npub1r0rs5q2gk0e3dk3nlc7gnu378ec6cnlenqp8a3cjhyzu6f8k5sgs4sq9ac"), // Karnage
-];
 
 const Contributors = [
   bech32ToHex("npub10djxr5pvdu97rjkde7tgcsjxzpdzmdguwacfjwlchvj7t88dl7nsdl54nf"), // ivan
@@ -94,13 +87,13 @@ const DonatePage = () => {
       <h2>
         <FormattedMessage
           defaultMessage="Help fund the development of {site}"
-          values={{ site: process.env.APP_NAME_CAPITALIZED }}
+          values={{ site: CONFIG.appNameCapitalized }}
         />
       </h2>
       <p>
         <FormattedMessage
           defaultMessage="{site} is an open source project built by passionate people in their free time"
-          values={{ site: process.env.APP_NAME_CAPITALIZED }}
+          values={{ site: CONFIG.appNameCapitalized }}
         />
       </p>
       <p>
@@ -121,9 +114,9 @@ const DonatePage = () => {
       <p>
         <FormattedMessage defaultMessage="Each contributor will get paid a percentage of all donations and NIP-05 orders, you can see the split amounts below" />
       </p>
-      <div className="flex-column g12">
+      <div className="flex flex-col g12">
         <div className="b br p">
-          <div className="flex f-space">
+          <div className="flex justify-between">
             <FormattedMessage defaultMessage="Lightning Donation" />
             <ZapButton pubkey={bech32ToHex(SnortPubKey)} lnurl={DonateLNURL}>
               <FormattedMessage defaultMessage="Donate" />
@@ -139,7 +132,7 @@ const DonatePage = () => {
           )}
         </div>
         <div className="b br p">
-          <div className="flex f-space">
+          <div className="flex justify-between">
             <FormattedMessage defaultMessage="On-chain Donation" />
             <AsyncButton type="button" onClick={getOnChainAddress}>
               <FormattedMessage defaultMessage="Get Address" />
@@ -149,7 +142,7 @@ const DonatePage = () => {
       </div>
       {onChain && (
         <Modal onClose={() => setOnChain("")} id="donate-on-chain">
-          <div className="flex-column f-center g12">
+          <div className="flex flex-col items-center g12">
             <h2>
               <FormattedMessage defaultMessage="On-chain Donation Address" />
             </h2>
@@ -161,7 +154,7 @@ const DonatePage = () => {
       <h3>
         <FormattedMessage defaultMessage="Primary Developers" />
       </h3>
-      {Developers.map(a => (
+      {DeveloperAccounts.map(a => (
         <ProfilePreview pubkey={a} key={a} actions={actions(a)} />
       ))}
       <h4>

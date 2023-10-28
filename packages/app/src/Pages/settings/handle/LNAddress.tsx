@@ -9,7 +9,7 @@ import SnortServiceProvider, { ManageHandle } from "Nip05/SnortServiceProvider";
 
 export default function LNForwardAddress({ handle }: { handle: ManageHandle }) {
   const { formatMessage } = useIntl();
-  const publisher = useEventPublisher();
+  const { publisher } = useEventPublisher();
 
   const [newAddress, setNewAddress] = useState(handle.lnAddress ?? "");
   const [error, setError] = useState("");
@@ -50,7 +50,7 @@ export default function LNForwardAddress({ handle }: { handle: ManageHandle }) {
         <FormattedMessage defaultMessage="Your handle will act like a lightning address and will redirect to your chosen LNURL or Lightning address" />
       </p>
       <div className="flex">
-        <div className="f-grow">
+        <div className="grow">
           <input
             type="text"
             className="w-max mr10"

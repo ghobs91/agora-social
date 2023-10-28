@@ -12,11 +12,15 @@ interface NoteCreatorDataSnapshot {
   advanced: boolean;
   preview?: NostrEvent;
   replyTo?: TaggedNostrEvent;
+  quote?: TaggedNostrEvent;
   selectedCustomRelays?: Array<string>;
   zapSplits?: Array<ZapTarget>;
   sensitive?: string;
   pollOptions?: Array<string>;
   otherEvents?: Array<NostrEvent>;
+  extraTags?: Array<Array<string>>;
+  sending?: Array<NostrEvent>;
+  sendStarted: boolean;
   reset: () => void;
   update: (fn: (v: NoteCreatorDataSnapshot) => void) => void;
 }
@@ -32,6 +36,7 @@ class NoteCreatorStore extends ExternalStore<NoteCreatorDataSnapshot> {
       error: "",
       active: false,
       advanced: false,
+      sendStarted: false,
       reset: () => {
         this.#reset(this.#data);
         this.notifyChange(this.#data);
@@ -49,13 +54,17 @@ class NoteCreatorStore extends ExternalStore<NoteCreatorDataSnapshot> {
     d.error = "";
     d.active = false;
     d.advanced = false;
+    d.sendStarted = false;
     d.preview = undefined;
     d.replyTo = undefined;
+    d.quote = undefined;
     d.selectedCustomRelays = undefined;
     d.zapSplits = undefined;
     d.sensitive = undefined;
     d.pollOptions = undefined;
     d.otherEvents = undefined;
+    d.sending = undefined;
+    d.extraTags = undefined;
   }
 
   takeSnapshot(): NoteCreatorDataSnapshot {

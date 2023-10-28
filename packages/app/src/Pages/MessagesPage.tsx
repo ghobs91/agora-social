@@ -3,12 +3,12 @@ import "./MessagesPage.css";
 import React, { useEffect, useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useNavigate, useParams } from "react-router-dom";
-import { NostrLink, NostrPrefix, TLVEntryType, UserMetadata, decodeTLV } from "@snort/system";
+import { NostrLink, TLVEntryType, UserMetadata, decodeTLV } from "@snort/system";
 import { useUserProfile, useUserSearch } from "@snort/system-react";
 
 import UnreadCount from "Element/UnreadCount";
-import ProfileImage, { getDisplayName } from "Element/User/ProfileImage";
-import { appendDedupe, debounce, parseId } from "SnortUtils";
+import ProfileImage from "Element/User/ProfileImage";
+import { appendDedupe, debounce, parseId, getDisplayName } from "SnortUtils";
 import NoteToSelf from "Element/User/NoteToSelf";
 import useModeration from "Hooks/useModeration";
 import useLogin from "Hooks/useLogin";
@@ -25,6 +25,7 @@ import { useEventFeed } from "Feed/EventFeed";
 import { LoginSession, LoginStore } from "Login";
 import { Nip28ChatSystem } from "chat/nip28";
 import { ChatParticipantProfile } from "Element/Chat/ChatParticipant";
+import classNames from "classnames";
 
 const TwoCol = 768;
 const ThreeCol = 1500;
@@ -54,7 +55,7 @@ export default function MessagesPage() {
   function noteToSelf(chat: Chat) {
     return (
       <div className="flex p" key={chat.id} onClick={e => openChat(e, chat.type, chat.id)}>
-        <NoteToSelf clickable={true} className="f-grow" link="" pubkey={chat.id} />
+        <NoteToSelf className="grow" />
       </div>
     );
   }
@@ -64,7 +65,7 @@ export default function MessagesPage() {
       return <ChatParticipantProfile participant={cx.participants[0]} />;
     } else {
       return (
-        <div className="flex f-grow pfp-overlap">
+        <div className="flex items-center grow pfp-overlap">
           {cx.participants.map(v => (
             <ProfileImage pubkey={v.id} link="" showUsername={false} profile={v.profile} />
           ))}
@@ -81,7 +82,10 @@ export default function MessagesPage() {
 
     const isActive = cx.id === chat;
     return (
-      <div className={`flex p${isActive ? " active" : ""}`} key={cx.id} onClick={e => openChat(e, cx.type, cx.id)}>
+      <div
+        className={classNames("flex items-center p", { active: isActive })}
+        key={cx.id}
+        onClick={e => openChat(e, cx.type, cx.id)}>
         {conversationIdent(cx)}
         <div className="nowrap">
           <small>
@@ -97,7 +101,7 @@ export default function MessagesPage() {
     <div className="dm-page">
       {(pageWidth >= TwoCol || !chat) && (
         <div className="chat-list">
-          <div className="flex p f-space">
+          <div className="flex items-center p justify-between">
             <button disabled={unreadCount <= 0} type="button">
               <FormattedMessage defaultMessage="Mark all read" />
             </button>
@@ -204,13 +208,13 @@ function NewChatWindow() {
 
   return (
     <>
-      <button type="button" className="new-chat" onClick={() => setShow(true)}>
+      <button type="button" className="flex justify-center new-chat" onClick={() => setShow(true)}>
         <Icon name="plus" size={16} />
       </button>
       {show && (
         <Modal id="new-chat" onClose={() => setShow(false)} className="new-chat-modal">
-          <div className="flex-column g16">
-            <div className="flex f-space">
+          <div className="flex flex-col g16">
+            <div className="flex justify-between">
               <h2>
                 <FormattedMessage defaultMessage="New Chat" />
               </h2>
@@ -218,7 +222,7 @@ function NewChatWindow() {
                 <FormattedMessage defaultMessage="Start chat" />
               </button>
             </div>
-            <div className="flex-column g8">
+            <div className="flex flex-col g8">
               <h3>
                 <FormattedMessage defaultMessage="Search users" />
               </h3>
@@ -244,7 +248,7 @@ function NewChatWindow() {
               <p>
                 <FormattedMessage defaultMessage="People you follow" />
               </p>
-              <div className="user-list flex-column g2">
+              <div className="user-list flex flex-col g2">
                 {results.map(a => {
                   return (
                     <ProfilePreview
@@ -280,7 +284,7 @@ function NewChatWindow() {
 }
 
 export function Nip28ChatProfile({ id, onClick }: { id: string; onClick: (id: string) => void }) {
-  const channel = useEventFeed(new NostrLink(NostrPrefix.Event, id, 40));
+  const channel = useEventFeed(new NostrLink(CONFIG.eventLinkPrefix, id, 40));
   if (channel?.data) {
     const meta = JSON.parse(channel.data.content) as UserMetadata;
     return (

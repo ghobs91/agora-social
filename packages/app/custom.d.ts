@@ -34,3 +34,24 @@ declare module "emojilib" {
   const value: Record<string, string>;
   export default value;
 }
+
+declare const CONFIG: {
+  appName: string;
+  appNameCapitalized: string;
+  appTitle: string;
+  hostname: string;
+  nip05Domain: string;
+  favicon: string;
+  appleTouchIconUrl: string;
+  httpCache: string;
+  animalNamePlaceholders: boolean;
+  defaultZapPoolFee?: number;
+  features: {
+    analytics: boolean;
+    subscriptions: boolean;
+    deck: boolean;
+    zapPool: boolean;
+  };
+  eventLinkPrefix: NostrPrefix;
+  profileLinkPrefix: NostrPrefix;
+};

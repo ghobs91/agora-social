@@ -1,20 +1,21 @@
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 import ProfilePreview from "Element/User/ProfilePreview";
 import useRelayState from "Feed/RelayState";
 import { useNavigate, useParams } from "react-router-dom";
 import { parseId, unwrap } from "SnortUtils";
-import { System } from "index";
 import { removeRelay } from "Login";
 import useLogin from "Hooks/useLogin";
 
 import messages from "./messages";
+import useEventPublisher from "Hooks/useEventPublisher";
 
 const RelayInfo = () => {
   const params = useParams();
   const navigate = useNavigate();
   const login = useLogin();
+  const { system } = useEventPublisher();
 
-  const conn = System.Sockets.find(a => a.id === params.id);
+  const conn = system.Sockets.find(a => a.id === params.id);
   const stats = useRelayState(conn?.address ?? "");
 
   return (
@@ -36,10 +37,10 @@ const RelayInfo = () => {
         )}
         {stats?.info?.software && (
           <div className="flex">
-            <h4 className="f-grow">
+            <h4 className="grow">
               <FormattedMessage {...messages.Software} />
             </h4>
-            <div className="flex f-col">
+            <div className="flex flex-col">
               {stats.info.software.startsWith("http") ? (
                 <a href={stats.info.software} target="_blank" rel="noreferrer">
                   {stats.info.software}
@@ -56,7 +57,7 @@ const RelayInfo = () => {
         )}
         {stats?.info?.contact && (
           <div className="flex">
-            <h4 className="f-grow">
+            <h4 className="grow">
               <FormattedMessage {...messages.Contact} />
             </h4>
             <a
@@ -72,7 +73,7 @@ const RelayInfo = () => {
             <h4>
               <FormattedMessage {...messages.Supports} />
             </h4>
-            <div className="f-grow">
+            <div className="grow">
               {stats.info.supported_nips.map(a => (
                 <a target="_blank" rel="noreferrer" href={`https://nips.be/${a}`} className="pill">
                   NIP-{a.toString().padStart(2, "0")}
@@ -84,7 +85,7 @@ const RelayInfo = () => {
         <h4>
           <FormattedMessage defaultMessage="Active Subscriptions" />
         </h4>
-        <div className="f-grow">
+        <div className="grow">
           {stats?.activeRequests.map(a => (
             <span className="pill" key={a}>
               {a}
@@ -94,14 +95,14 @@ const RelayInfo = () => {
         <h4>
           <FormattedMessage defaultMessage="Pending Subscriptions" />
         </h4>
-        <div className="f-grow">
+        <div className="grow">
           {stats?.pendingRequests.map(a => (
             <span className="pill" key={a}>
               {a}
             </span>
           ))}
         </div>
-        <div className="flex mt10 f-end">
+        <div className="flex mt10 justify-end">
           <div
             className="btn error"
             onClick={() => {

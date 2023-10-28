@@ -2,10 +2,10 @@ import "./Avatar.css";
 
 import { CSSProperties, ReactNode, useEffect, useState } from "react";
 import type { UserMetadata } from "@snort/system";
+import classNames from "classnames";
 
 import useImgProxy from "Hooks/useImgProxy";
-import { getDisplayName } from "Element/User/ProfileImage";
-import { defaultAvatar } from "SnortUtils";
+import { defaultAvatar, getDisplayName } from "SnortUtils";
 
 interface AvatarProps {
   pubkey: string;
@@ -44,7 +44,7 @@ const Avatar = ({ pubkey, user, size, onClick, image, imageOverlay, icons, class
     <div
       onClick={onClick}
       style={style}
-      className={`avatar${imageOverlay ? " with-overlay" : ""} ${className ?? ""}`}
+      className={classNames("avatar", { "with-overlay": imageOverlay }, className)}
       data-domain={domain?.toLowerCase()}
       title={getDisplayName(user, "")}>
       {icons && <div className="icons">{icons}</div>}

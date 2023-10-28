@@ -8,12 +8,12 @@ export default function NostrLink({ link, depth }: { link: string; depth?: numbe
   const nav = tryParseNostrLink(link);
 
   if (nav?.type === NostrPrefix.PublicKey || nav?.type === NostrPrefix.Profile) {
-    return <Mention pubkey={nav.id} relays={nav.relays} />;
+    return <Mention link={nav} />;
   } else if (nav?.type === NostrPrefix.Note || nav?.type === NostrPrefix.Event || nav?.type === NostrPrefix.Address) {
     if ((depth ?? 0) > 0) {
       const evLink = nav.encode();
       return (
-        <Link to={`/e/${evLink}`} onClick={e => e.stopPropagation()} state={{ from: location.pathname }}>
+        <Link to={`/${evLink}`} onClick={e => e.stopPropagation()} state={{ from: location.pathname }}>
           #{evLink.substring(0, 12)}
         </Link>
       );

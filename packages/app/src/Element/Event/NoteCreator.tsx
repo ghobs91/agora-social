@@ -1,14 +1,7 @@
 import "./NoteCreator.css";
 import { FormattedMessage, useIntl } from "react-intl";
-import {
-  EventKind,
-  NostrPrefix,
-  TaggedNostrEvent,
-  EventBuilder,
-  tryParseNostrLink,
-  NostrLink,
-  NostrEvent,
-} from "@snort/system";
+import { EventKind, NostrPrefix, TaggedNostrEvent, EventBuilder, tryParseNostrLink, NostrLink } from "@snort/system";
+import classNames from "classnames";
 
 import Icon from "Icons/Icon";
 import useEventPublisher from "Hooks/useEventPublisher";
@@ -21,18 +14,22 @@ import Note from "Element/Event/Note";
 
 import { ClipboardEventHandler } from "react";
 import useLogin from "Hooks/useLogin";
-import { System, WasmPowWorker } from "index";
+import { GetPowWorker } from "index";
 import AsyncButton from "Element/AsyncButton";
 import { AsyncIcon } from "Element/AsyncIcon";
 import { fetchNip05Pubkey } from "@snort/shared";
 import { ZapTarget } from "Zapper";
 import { useNoteCreator } from "State/NoteCreator";
+import { NoteBroadcaster } from "./NoteBroadcaster";
+import FileUploadProgress from "./FileUpload";
+import { ToggleSwitch } from "Icons/Toggle";
 
 export function NoteCreator() {
   const { formatMessage } = useIntl();
   const uploader = useFileUpload();
   const login = useLogin(s => ({ relays: s.relays, publicKey: s.publicKey, pow: s.preferences.pow }));
-  const publisher = login.pow ? useEventPublisher()?.pow(login.pow, new WasmPowWorker()) : useEventPublisher();
+  const { publisher: pub } = useEventPublisher();
+  const publisher = login.pow ? pub?.pow(login.pow, GetPowWorker()) : pub;
   const note = useNoteCreator();
   const relays = login.relays;
 
@@ -102,8 +99,25 @@ export function NoteCreator() {
           extraTags ??= [];
           extraTags.push(...note.pollOptions.map((a, i) => ["poll_option", i.toString(), a]));
         }
+        // add quote repost
+        if (note.quote) {
+          if (!note.note.endsWith("\n")) {
+            note.note += "\n";
+          }
+          const link = NostrLink.fromEvent(note.quote);
+          note.note += `nostr:${link.encode(CONFIG.eventLinkPrefix)}`;
+          const quoteTag = link.toEventTag();
+          if (quoteTag) {
+            extraTags ??= [];
+            if (quoteTag[0] === "e") {
+              quoteTag[0] = "q"; // how to 'q' tag replacable events?
+            }
+            extraTags.push(quoteTag);
+          }
+        }
         const hk = (eb: EventBuilder) => {
           extraTags?.forEach(t => eb.tag(t));
+          note.extraTags?.forEach(t => eb.tag(t));
           eb.kind(kind);
           return eb;
         };
@@ -123,24 +137,11 @@ export function NoteCreator() {
     }
   }
 
-  async function sendEventToRelays(ev: NostrEvent) {
-    if (note.selectedCustomRelays) {
-      await Promise.all(note.selectedCustomRelays.map(r => System.WriteOnceToRelay(r, ev)));
-    } else {
-      System.BroadcastEvent(ev);
-    }
-  }
-
   async function sendNote() {
     const ev = await buildNote();
     if (ev) {
-      await sendEventToRelays(ev);
-      for (const oe of note.otherEvents ?? []) {
-        await sendEventToRelays(oe);
-      }
-      note.update(v => {
-        v.reset();
-        v.show = false;
+      note.update(n => {
+        n.sending = (note.otherEvents ?? []).concat(ev);
       });
     }
   }
@@ -168,11 +169,24 @@ export function NoteCreator() {
         const rx = await uploader.upload(file, file.name);
         note.update(v => {
           if (rx.header) {
-            const link = `nostr:${new NostrLink(NostrPrefix.Event, rx.header.id, rx.header.kind).encode()}`;
+            const link = `nostr:${new NostrLink(NostrPrefix.Event, rx.header.id, rx.header.kind).encode(
+              CONFIG.eventLinkPrefix,
+            )}`;
             v.note = `${v.note ? `${v.note}\n` : ""}${link}`;
             v.otherEvents = [...(v.otherEvents ?? []), rx.header];
           } else if (rx.url) {
             v.note = `${v.note ? `${v.note}\n` : ""}${rx.url}`;
+            if (rx.metadata) {
+              v.extraTags ??= [];
+              const imeta = ["imeta", `url ${rx.url}`];
+              if (rx.metadata.blurhash) {
+                imeta.push(`blurhash ${rx.metadata.blurhash}`);
+              }
+              if (rx.metadata.width && rx.metadata.height) {
+                imeta.push(`dim ${rx.metadata.width}x${rx.metadata.height}`);
+              }
+              v.extraTags.push(imeta);
+            }
           } else if (rx?.error) {
             v.error = rx.error;
           }
@@ -201,7 +215,7 @@ export function NoteCreator() {
     });
   }
 
-  async function onSubmit(ev: React.MouseEvent<HTMLButtonElement>) {
+  async function onSubmit(ev: React.MouseEvent) {
     ev.stopPropagation();
     await sendNote();
   }
@@ -280,11 +294,11 @@ export function NoteCreator() {
 
   function renderRelayCustomisation() {
     return (
-      <div className="flex-column g8">
+      <div className="flex flex-col g8">
         {Object.keys(relays.item || {})
           .filter(el => relays.item[el].write)
           .map((r, i, a) => (
-            <div className="p flex f-space note-creator-relay">
+            <div className="p flex justify-between note-creator-relay">
               <div>{r}</div>
               <div>
                 <input
@@ -327,6 +341,151 @@ export function NoteCreator() {
     ));
   }*/
 
+  function noteCreatorAdvanced() {
+    return (
+      <>
+        <div>
+          <h4>
+            <FormattedMessage defaultMessage="Custom Relays" />
+          </h4>
+          <p>
+            <FormattedMessage defaultMessage="Send note to a subset of your write relays" />
+          </p>
+          {renderRelayCustomisation()}
+        </div>
+        <div className="flex flex-col g8">
+          <h4>
+            <FormattedMessage defaultMessage="Zap Splits" />
+          </h4>
+          <FormattedMessage defaultMessage="Zaps on this note will be split to the following users." />
+          <div className="flex flex-col g8">
+            {[...(note.zapSplits ?? [])].map((v, i, arr) => (
+              <div className="flex items-center g8">
+                <div className="flex flex-col f-4 g4">
+                  <h4>
+                    <FormattedMessage defaultMessage="Recipient" />
+                  </h4>
+                  <input
+                    type="text"
+                    value={v.value}
+                    onChange={e =>
+                      note.update(
+                        v => (v.zapSplits = arr.map((vv, ii) => (ii === i ? { ...vv, value: e.target.value } : vv))),
+                      )
+                    }
+                    placeholder={formatMessage({ defaultMessage: "npub / nprofile / nostr address" })}
+                  />
+                </div>
+                <div className="flex flex-col f-1 g4">
+                  <h4>
+                    <FormattedMessage defaultMessage="Weight" />
+                  </h4>
+                  <input
+                    type="number"
+                    min={0}
+                    value={v.weight}
+                    onChange={e =>
+                      note.update(
+                        v =>
+                          (v.zapSplits = arr.map((vv, ii) =>
+                            ii === i ? { ...vv, weight: Number(e.target.value) } : vv,
+                          )),
+                      )
+                    }
+                  />
+                </div>
+                <div className="flex flex-col s g4">
+                  <div>&nbsp;</div>
+                  <Icon
+                    name="close"
+                    onClick={() => note.update(v => (v.zapSplits = (v.zapSplits ?? []).filter((_v, ii) => ii !== i)))}
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() =>
+                note.update(v => (v.zapSplits = [...(v.zapSplits ?? []), { type: "pubkey", value: "", weight: 1 }]))
+              }>
+              <FormattedMessage defaultMessage="Add" />
+            </button>
+          </div>
+          <span className="warning">
+            <FormattedMessage defaultMessage="Not all clients support this, you may still receive some zaps as if zap splits was not configured" />
+          </span>
+        </div>
+        <div className="flex flex-col g8">
+          <h4>
+            <FormattedMessage defaultMessage="Sensitive Content" />
+          </h4>
+          <FormattedMessage defaultMessage="Users must accept the content warning to show the content of your note." />
+          <input
+            className="w-max"
+            type="text"
+            value={note.sensitive}
+            onChange={e => note.update(v => (v.sensitive = e.target.value))}
+            maxLength={50}
+            minLength={1}
+            placeholder={formatMessage({
+              defaultMessage: "Reason",
+            })}
+          />
+          <span className="warning">
+            <FormattedMessage defaultMessage="Not all clients support this yet" />
+          </span>
+        </div>
+      </>
+    );
+  }
+
+  function noteCreatorFooter() {
+    return (
+      <div className="flex items-center justify-between">
+        <div className="flex items-center g8">
+          <ProfileImage
+            pubkey={login.publicKey ?? ""}
+            className="note-creator-icon"
+            link=""
+            showUsername={false}
+            showFollowingMark={false}
+          />
+          {note.pollOptions === undefined && !note.replyTo && (
+            <AsyncIcon
+              iconName="list"
+              iconSize={24}
+              onClick={() => note.update(v => (v.pollOptions = ["A", "B"]))}
+              className={classNames("note-creator-icon", { active: note.pollOptions !== undefined })}
+            />
+          )}
+          <AsyncIcon iconName="image-plus" iconSize={24} onClick={attachFile} className="note-creator-icon" />
+          <AsyncIcon
+            iconName="settings-04"
+            iconSize={24}
+            onClick={() => note.update(v => (v.advanced = !v.advanced))}
+            className={classNames("note-creator-icon", { active: note.advanced })}
+          />
+          <span className="sm:inline hidden">
+            <FormattedMessage defaultMessage="Preview" />
+          </span>
+          <ToggleSwitch
+            onClick={() => loadPreview()}
+            size={40}
+            className={classNames({ active: Boolean(note.preview) })}
+          />
+        </div>
+        <div className="flex g8">
+          <button className="secondary" onClick={cancel}>
+            <FormattedMessage defaultMessage="Cancel" />
+          </button>
+          <AsyncButton onClick={onSubmit} className="primary">
+            {note.replyTo ? <FormattedMessage defaultMessage="Reply" /> : <FormattedMessage defaultMessage="Send" />}
+          </AsyncButton>
+        </div>
+      </div>
+    );
+  }
+
   const handlePaste: ClipboardEventHandler<HTMLDivElement> = evt => {
     if (evt.clipboardData) {
       const clipboardItems = evt.clipboardData.items;
@@ -346,167 +505,85 @@ export function NoteCreator() {
     }
   };
 
+  function noteCreatorForm() {
+    return (
+      <>
+        {note.replyTo && (
+          <>
+            <h4>
+              <FormattedMessage defaultMessage="Reply To" />
+            </h4>
+            <Note
+              data={note.replyTo}
+              related={[]}
+              options={{
+                showFooter: false,
+                showContextMenu: false,
+                showTime: false,
+                canClick: false,
+                showMedia: false,
+                longFormPreview: true,
+              }}
+            />
+          </>
+        )}
+        {note.quote && (
+          <>
+            <h4>
+              <FormattedMessage defaultMessage="Quote Repost" />
+            </h4>
+            <Note
+              data={note.quote}
+              related={[]}
+              options={{
+                showFooter: false,
+                showContextMenu: false,
+                showTime: false,
+                canClick: false,
+                showMedia: false,
+                longFormPreview: true,
+              }}
+            />
+          </>
+        )}
+        {note.preview && getPreviewNote()}
+        {!note.preview && (
+          <div onPaste={handlePaste} className={classNames("note-creator", { poll: Boolean(note.pollOptions) })}>
+            <Textarea
+              autoFocus
+              className={classNames("textarea", { "textarea--focused": note.active })}
+              onChange={c => onChange(c)}
+              value={note.note}
+              onFocus={() => note.update(v => (v.active = true))}
+              onKeyDown={e => {
+                if (e.key === "Enter" && e.metaKey) {
+                  sendNote().catch(console.warn);
+                }
+              }}
+            />
+            {renderPollOptions()}
+          </div>
+        )}
+        {uploader.progress.length > 0 && <FileUploadProgress progress={uploader.progress} />}
+        {noteCreatorFooter()}
+        {note.error && <span className="error">{note.error}</span>}
+        {note.advanced && noteCreatorAdvanced()}
+      </>
+    );
+  }
+
+  function reset() {
+    note.update(v => {
+      v.reset();
+      v.show = false;
+    });
+  }
+
   if (!note.show) return null;
   return (
-    <Modal id="note-creator" className="note-creator-modal" onClose={() => note.update(v => (v.show = false))}>
-      {note.replyTo && (
-        <Note
-          data={note.replyTo}
-          related={[]}
-          options={{
-            showFooter: false,
-            showContextMenu: false,
-            showTime: false,
-            canClick: false,
-            showMedia: false,
-          }}
-        />
-      )}
-      {note.preview && getPreviewNote()}
-      {!note.preview && (
-        <div onPaste={handlePaste} className={`note-creator${note.pollOptions ? " poll" : ""}`}>
-          <Textarea
-            autoFocus
-            className={`textarea ${note.active ? "textarea--focused" : ""}`}
-            onChange={c => onChange(c)}
-            value={note.note}
-            onFocus={() => note.update(v => (v.active = true))}
-            onKeyDown={e => {
-              if (e.key === "Enter" && e.metaKey) {
-                sendNote().catch(console.warn);
-              }
-            }}
-          />
-          {renderPollOptions()}
-        </div>
-      )}
-      <div className="flex f-space">
-        <div className="flex g8">
-          <ProfileImage
-            pubkey={login.publicKey ?? ""}
-            className="note-creator-icon"
-            link=""
-            showUsername={false}
-            showFollowingMark={false}
-          />
-          {note.pollOptions === undefined && !note.replyTo && (
-            <div className="note-creator-icon">
-              <Icon name="pie-chart" onClick={() => note.update(v => (v.pollOptions = ["A", "B"]))} size={24} />
-            </div>
-          )}
-          <AsyncIcon iconName="image-plus" iconSize={24} onClick={attachFile} className="note-creator-icon" />
-          <button className="secondary" onClick={() => note.update(v => (v.advanced = !v.advanced))}>
-            <FormattedMessage defaultMessage="Advanced" />
-          </button>
-        </div>
-        <div className="flex g8">
-          <button className="secondary" onClick={cancel}>
-            <FormattedMessage defaultMessage="Cancel" />
-          </button>
-          <AsyncButton onClick={onSubmit}>
-            {note.replyTo ? <FormattedMessage defaultMessage="Reply" /> : <FormattedMessage defaultMessage="Send" />}
-          </AsyncButton>
-        </div>
-      </div>
-      {note.error && <span className="error">{note.error}</span>}
-      {note.advanced && (
-        <>
-          <button className="secondary" onClick={loadPreview}>
-            <FormattedMessage defaultMessage="Toggle Preview" />
-          </button>
-          <div>
-            <h4>
-              <FormattedMessage defaultMessage="Custom Relays" />
-            </h4>
-            <p>
-              <FormattedMessage defaultMessage="Send note to a subset of your write relays" />
-            </p>
-            {renderRelayCustomisation()}
-          </div>
-          <div className="flex-column g8">
-            <h4>
-              <FormattedMessage defaultMessage="Zap Splits" />
-            </h4>
-            <FormattedMessage defaultMessage="Zaps on this note will be split to the following users." />
-            <div className="flex-column g8">
-              {[...(note.zapSplits ?? [])].map((v, i, arr) => (
-                <div className="flex f-center g8">
-                  <div className="flex-column f-4 g4">
-                    <h4>
-                      <FormattedMessage defaultMessage="Recipient" />
-                    </h4>
-                    <input
-                      type="text"
-                      value={v.value}
-                      onChange={e =>
-                        note.update(
-                          v => (v.zapSplits = arr.map((vv, ii) => (ii === i ? { ...vv, value: e.target.value } : vv))),
-                        )
-                      }
-                      placeholder={formatMessage({ defaultMessage: "npub / nprofile / nostr address" })}
-                    />
-                  </div>
-                  <div className="flex-column f-1 g4">
-                    <h4>
-                      <FormattedMessage defaultMessage="Weight" />
-                    </h4>
-                    <input
-                      type="number"
-                      min={0}
-                      value={v.weight}
-                      onChange={e =>
-                        note.update(
-                          v =>
-                            (v.zapSplits = arr.map((vv, ii) =>
-                              ii === i ? { ...vv, weight: Number(e.target.value) } : vv,
-                            )),
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="flex-column f-shrink g4">
-                    <div>&nbsp;</div>
-                    <Icon
-                      name="close"
-                      onClick={() => note.update(v => (v.zapSplits = (v.zapSplits ?? []).filter((_v, ii) => ii !== i)))}
-                    />
-                  </div>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() =>
-                  note.update(v => (v.zapSplits = [...(v.zapSplits ?? []), { type: "pubkey", value: "", weight: 1 }]))
-                }>
-                <FormattedMessage defaultMessage="Add" />
-              </button>
-            </div>
-            <span className="warning">
-              <FormattedMessage defaultMessage="Not all clients support this, you may still receive some zaps as if zap splits was not configured" />
-            </span>
-          </div>
-          <div className="flex-column g8">
-            <h4>
-              <FormattedMessage defaultMessage="Sensitive Content" />
-            </h4>
-            <FormattedMessage defaultMessage="Users must accept the content warning to show the content of your note." />
-            <input
-              className="w-max"
-              type="text"
-              value={note.sensitive}
-              onChange={e => note.update(v => (v.sensitive = e.target.value))}
-              maxLength={50}
-              minLength={1}
-              placeholder={formatMessage({
-                defaultMessage: "Reason",
-              })}
-            />
-            <span className="warning">
-              <FormattedMessage defaultMessage="Not all clients support this yet" />
-            </span>
-          </div>
-        </>
-      )}
+    <Modal id="note-creator" className="note-creator-modal" onClose={reset}>
+      {note.sending && <NoteBroadcaster evs={note.sending} onClose={reset} customRelays={note.selectedCustomRelays} />}
+      {!note.sending && noteCreatorForm()}
     </Modal>
   );
 }

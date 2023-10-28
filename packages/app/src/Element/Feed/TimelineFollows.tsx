@@ -1,6 +1,6 @@
 import "./Timeline.css";
 import { ReactNode, useCallback, useContext, useMemo, useState, useSyncExternalStore } from "react";
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 import { TaggedNostrEvent, EventKind, u256, NostrEvent, NostrLink } from "@snort/system";
 import { unixNow } from "@snort/shared";
 import { SnortContext } from "@snort/system-react";
@@ -49,7 +49,7 @@ const TimelineFollows = (props: TimelineFollowsProps) => {
     function <T extends NostrEvent>(nts: Array<T>) {
       const a = nts.filter(a => a.kind !== EventKind.LiveEvent);
       return a
-        ?.filter(a => (props.postsOnly ? !a.tags.some(b => b[0] === "e") : true))
+        ?.filter(a => (props.postsOnly ? !a.tags.some(b => b[0] === "e" || b[0] === "a") : true))
         .filter(a => !isMuted(a.pubkey) && login.follows.item.includes(a.pubkey) && (props.noteFilter?.(a) ?? true));
     },
     [props.postsOnly, muted, login.follows.timestamp],
@@ -126,7 +126,7 @@ const TimelineFollows = (props: TimelineFollowsProps) => {
             />
           ),
       )}
-      <div className="flex f-center p">
+      <div className="flex items-center p">
         <AsyncButton
           onClick={async () => {
             await FollowsFeed.loadMore(system, login, sortedFeed[sortedFeed.length - 1].created_at);

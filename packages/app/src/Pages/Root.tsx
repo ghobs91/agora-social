@@ -1,11 +1,11 @@
 import { useContext, useEffect, useState } from "react";
 import { Link, Outlet, RouteObject, useParams } from "react-router-dom";
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 import { unixNow } from "@snort/shared";
 import { NostrLink } from "@snort/system";
+import { SnortContext } from "@snort/system-react";
 
 import Timeline from "Element/Feed/Timeline";
-import { System } from "index";
 import { TimelineSubject } from "Feed/TimelineFeed";
 import { debounce, getRelayName, sha256 } from "SnortUtils";
 import useLogin from "Hooks/useLogin";
@@ -63,11 +63,12 @@ export const GlobalTab = () => {
   const [relay, setRelay] = useState<RelayOption>();
   const [allRelays, setAllRelays] = useState<RelayOption[]>();
   const [now] = useState(unixNow());
+  const system = useContext(SnortContext);
 
   const subject: TimelineSubject = {
     type: "global",
     items: [],
-    relay: relay?.url,
+    relay: relay?.url ? [relay.url] : undefined,
     discriminator: `all-${sha256(relay?.url ?? "").slice(0, 12)}`,
   };
 
@@ -77,7 +78,7 @@ export const GlobalTab = () => {
     const paidRelays = allRelays.filter(a => a.paid);
     const publicRelays = allRelays.filter(a => !a.paid);
     return (
-      <div className="flex mb10 f-end nowrap">
+      <div className="flex items-center mb10 justify-end nowrap">
         <FormattedMessage
           defaultMessage="Read global from"
           description="Label for reading global feed from specific relays"
@@ -111,7 +112,7 @@ export const GlobalTab = () => {
   useEffect(() => {
     return debounce(500, () => {
       const ret: RelayOption[] = [];
-      System.Sockets.forEach(v => {
+      system.Sockets.forEach(v => {
         ret.push({
           url: v.address,
           paid: v.info?.limitation?.payment_required ?? false,
@@ -211,7 +212,11 @@ export const RootTabRoutes = [
   },
   {
     path: "trending/people",
-    element: <TrendingUsers />,
+    element: (
+      <div className="p">
+        <TrendingUsers />
+      </div>
+    ),
   },
   {
     path: "suggested",

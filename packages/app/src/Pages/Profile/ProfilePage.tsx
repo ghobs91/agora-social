@@ -1,12 +1,12 @@
 import "./ProfilePage.css";
 import { useEffect, useState } from "react";
-import FormattedMessage from "Element/FormattedMessage";
-import { useNavigate, useParams } from "react-router-dom";
+import { FormattedMessage } from "react-intl";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   encodeTLV,
   encodeTLVEntries,
   EventKind,
-  HexKey,
+  MetadataCache,
   NostrLink,
   NostrPrefix,
   TLVEntryType,
@@ -15,23 +15,15 @@ import {
 import { LNURL } from "@snort/shared";
 import { useUserProfile } from "@snort/system-react";
 
-import { findTag, getReactions, unwrap } from "SnortUtils";
-import { formatShort } from "Number";
+import { findTag, getLinkReactions, unwrap } from "SnortUtils";
 import Note from "Element/Event/Note";
-import Bookmarks from "Element/Bookmarks";
-import RelaysMetadata from "Element/Relay/RelaysMetadata";
 import { Tab, TabElement } from "Element/Tabs";
 import Icon from "Icons/Icon";
 import useMutedFeed from "Feed/MuteList";
-import useRelaysFeed from "Feed/RelaysFeed";
 import usePinnedFeed from "Feed/PinnedFeed";
-import useBookmarkFeed from "Feed/BookmarkFeed";
-import useFollowersFeed from "Feed/FollowersFeed";
 import useFollowsFeed from "Feed/FollowsFeed";
 import useProfileBadges from "Feed/BadgesFeed";
 import useModeration from "Hooks/useModeration";
-import useZapsFeed from "Feed/ZapsFeed";
-import { default as ZapElement } from "Element/Event/Zap";
 import FollowButton from "Element/User/FollowButton";
 import { parseId, hexToBech32 } from "SnortUtils";
 import Avatar from "Element/User/Avatar";
@@ -57,65 +49,32 @@ import useLogin from "Hooks/useLogin";
 import { ZapTarget } from "Zapper";
 import { useStatusFeed } from "Feed/StatusFeed";
 
-import messages from "./messages";
-import { SpotlightMediaModal } from "../Element/Deck/SpotlightMedia";
+import messages from "../messages";
+import { SpotlightMediaModal } from "Element/SpotlightMedia";
+import ProfileTab, {
+  BookMarksTab,
+  FollowersTab,
+  FollowsTab,
+  ProfileTabType,
+  RelaysTab,
+  ZapsProfileTab,
+} from "Pages/Profile/ProfileTab";
+import DisplayName from "Element/User/DisplayName";
+import { UserWebsiteLink } from "Element/User/UserWebsiteLink";
 
-const NOTES = 0;
-const REACTIONS = 1;
-const FOLLOWERS = 2;
-const FOLLOWS = 3;
-const ZAPS = 4;
-const MUTED = 5;
-const BLOCKED = 6;
-const RELAYS = 7;
-const BOOKMARKS = 8;
-
-function ZapsProfileTab({ id }: { id: HexKey }) {
-  const zaps = useZapsFeed(new NostrLink(NostrPrefix.PublicKey, id));
-  const zapsTotal = zaps.reduce((acc, z) => acc + z.amount, 0);
-  return (
-    <div className="main-content">
-      <h2 className="p">
-        <FormattedMessage {...messages.Sats} values={{ n: formatShort(zapsTotal) }} />
-      </h2>
-      {zaps.map(z => (
-        <ZapElement showZapped={false} zap={z} />
-      ))}
-    </div>
-  );
+interface ProfilePageProps {
+  id?: string;
+  state?: MetadataCache;
 }
 
-function FollowersTab({ id }: { id: HexKey }) {
-  const followers = useFollowersFeed(id);
-  return <FollowsList pubkeys={followers} showAbout={true} className="p" />;
-}
-
-function FollowsTab({ id }: { id: HexKey }) {
-  const follows = useFollowsFeed(id);
-  return <FollowsList pubkeys={follows} showAbout={true} className="p" />;
-}
-
-function RelaysTab({ id }: { id: HexKey }) {
-  const relays = useRelaysFeed(id);
-  return <RelaysMetadata relays={relays} />;
-}
-
-function BookMarksTab({ id }: { id: HexKey }) {
-  const bookmarks = useBookmarkFeed(id);
-  return (
-    <Bookmarks
-      pubkey={id}
-      bookmarks={bookmarks.filter(e => e.kind === EventKind.TextNote)}
-      related={bookmarks.filter(e => e.kind !== EventKind.TextNote)}
-    />
-  );
-}
-
-export default function ProfilePage() {
+export default function ProfilePage({ id: propId, state }: ProfilePageProps) {
   const params = useParams();
+  const location = useLocation();
+  const profileState = (location.state as MetadataCache | undefined) || state;
   const navigate = useNavigate();
-  const [id, setId] = useState<string>();
-  const user = useUserProfile(id);
+  const [id, setId] = useState<string | undefined>(profileState?.pubkey);
+  const [relays, setRelays] = useState<Array<string>>();
+  const user = useUserProfile(profileState ? undefined : id) || profileState;
   const login = useLogin();
   const loginPubKey = login.publicKey;
   const isMe = loginPubKey === id;
@@ -135,8 +94,6 @@ export default function ProfilePage() {
   const showBadges = login.preferences.showBadges ?? false;
   const showStatus = login.preferences.showStatus ?? true;
 
-  const website_url =
-    user?.website && !user.website.startsWith("http") ? "https://" + user.website : user?.website || "";
   // feeds
   const { blocked } = useModeration();
   const pinned = usePinnedFeed(id);
@@ -146,89 +103,6 @@ export default function ProfilePage() {
   const status = useStatusFeed(showStatus ? id : undefined, true);
 
   // tabs
-  const ProfileTab = {
-    Notes: {
-      text: (
-        <>
-          <Icon name="pencil" size={16} />
-          <FormattedMessage defaultMessage="Notes" />
-        </>
-      ),
-      value: NOTES,
-    },
-    Reactions: {
-      text: (
-        <>
-          <Icon name="reaction" size={16} />
-          <FormattedMessage defaultMessage="Reactions" />
-        </>
-      ),
-      value: REACTIONS,
-    },
-    Followers: {
-      text: (
-        <>
-          <Icon name="user-v2" size={16} />
-          <FormattedMessage defaultMessage="Followers" />
-        </>
-      ),
-      value: FOLLOWERS,
-    },
-    Follows: {
-      text: (
-        <>
-          <Icon name="stars" size={16} />
-          <FormattedMessage defaultMessage="Follows" />
-        </>
-      ),
-      value: FOLLOWS,
-    },
-    Zaps: {
-      text: (
-        <>
-          <Icon name="zap-solid" size={16} />
-          <FormattedMessage defaultMessage="Zaps" />
-        </>
-      ),
-      value: ZAPS,
-    },
-    Muted: {
-      text: (
-        <>
-          <Icon name="mute" size={16} />
-          <FormattedMessage defaultMessage="Muted" />
-        </>
-      ),
-      value: MUTED,
-    },
-    Blocked: {
-      text: (
-        <>
-          <Icon name="block" size={16} />
-          <FormattedMessage defaultMessage="Blocked" />
-        </>
-      ),
-      value: BLOCKED,
-    },
-    Relays: {
-      text: (
-        <>
-          <Icon name="wifi" size={16} />
-          <FormattedMessage defaultMessage="Relays" />
-        </>
-      ),
-      value: RELAYS,
-    },
-    Bookmarks: {
-      text: (
-        <>
-          <Icon name="bookmark-solid" size={16} />
-          <FormattedMessage defaultMessage="Bookmarks" />
-        </>
-      ),
-      value: BOOKMARKS,
-    },
-  } as { [key: string]: Tab };
   const [tab, setTab] = useState<Tab>(ProfileTab.Notes);
   const optionalTabs = [ProfileTab.Zaps, ProfileTab.Relays, ProfileTab.Bookmarks, ProfileTab.Muted].filter(a =>
     unwrap(a),
@@ -236,21 +110,24 @@ export default function ProfilePage() {
   const horizontalScroll = useHorizontalScroll();
 
   useEffect(() => {
-    if (params.id?.match(EmailRegex)) {
-      getNip05PubKey(params.id).then(a => {
-        setId(a);
-      });
-    } else {
-      const nav = tryParseNostrLink(params.id ?? "");
-      if (nav?.type === NostrPrefix.PublicKey || nav?.type === NostrPrefix.Profile) {
-        // todo: use relays if any for nprofile
-        setId(nav.id);
+    if (!id) {
+      const resolvedId = propId || params.id;
+      if (resolvedId?.match(EmailRegex)) {
+        getNip05PubKey(resolvedId).then(a => {
+          setId(a);
+        });
       } else {
-        setId(parseId(params.id ?? ""));
+        const nav = tryParseNostrLink(resolvedId ?? "");
+        if (nav?.type === NostrPrefix.PublicKey || nav?.type === NostrPrefix.Profile) {
+          setId(nav.id);
+          setRelays(nav.relays);
+        } else {
+          setId(parseId(resolvedId ?? ""));
+        }
       }
     }
     setTab(ProfileTab.Notes);
-  }, [params]);
+  }, [id, propId, params]);
 
   function musicStatus() {
     if (!status.music) return;
@@ -261,7 +138,7 @@ export default function ProfilePage() {
       return (
         <div className="flex g8">
           {cover && <ProxyImg src={cover} size={40} />}
-          <small>🎵 {unwrap(status.music).content}</small>
+          🎵 {unwrap(status.music).content}
         </div>
       );
     };
@@ -278,9 +155,9 @@ export default function ProfilePage() {
   function username() {
     return (
       <>
-        <div className="flex-column g4">
-          <h2 className="flex g4">
-            {user?.display_name || user?.name || "Nostrich"}
+        <div className="flex flex-col g4">
+          <h2 className="flex items-center g4">
+            <DisplayName user={user} pubkey={user?.pubkey ?? ""} />
             <FollowsYou followsMe={follows.includes(loginPubKey ?? "")} />
           </h2>
           {user?.nip05 && <Nip05 nip05={user.nip05} pubkey={user.pubkey} />}
@@ -295,28 +172,10 @@ export default function ProfilePage() {
     );
   }
 
-  function tryFormatWebsite(url: string) {
-    try {
-      const u = new URL(url);
-      return `${u.hostname}${u.pathname !== "/" ? u.pathname : ""}`;
-    } catch {
-      // ignore
-    }
-    return url;
-  }
-
   function links() {
     return (
       <>
-        {user?.website && (
-          <div className="link website f-ellipsis">
-            <Icon name="link-02" size={16} />
-            <a href={website_url} target="_blank" rel="noreferrer">
-              {tryFormatWebsite(user.website)}
-            </a>
-          </div>
-        )}
-
+        <UserWebsiteLink user={user} />
         {lnurl && (
           <div className="link lnurl f-ellipsis" onClick={() => setShowLnQr(true)}>
             <Icon name="zapCircle" size={16} />
@@ -369,7 +228,7 @@ export default function ProfilePage() {
     if (!id) return null;
 
     switch (tab.value) {
-      case NOTES:
+      case ProfileTabType.NOTES:
         return (
           <>
             {pinned
@@ -379,7 +238,7 @@ export default function ProfilePage() {
                   <Note
                     key={`pinned-${n.id}`}
                     data={n}
-                    related={getReactions(pinned, n.id)}
+                    related={getLinkReactions(pinned, NostrLink.fromEvent(n))}
                     options={{ showTime: false, showPinned: true, canUnpin: id === loginPubKey }}
                   />
                 );
@@ -390,6 +249,7 @@ export default function ProfilePage() {
                 type: "pubkey",
                 items: [id],
                 discriminator: id.slice(0, 12),
+                relay: relays,
               }}
               postsOnly={false}
               method={"LIMIT_UNTIL"}
@@ -399,29 +259,29 @@ export default function ProfilePage() {
             />
           </>
         );
-      case ZAPS: {
+      case ProfileTabType.ZAPS: {
         return <ZapsProfileTab id={id} />;
       }
-      case FOLLOWS: {
+      case ProfileTabType.FOLLOWS: {
         if (isMe) {
           return <FollowsList pubkeys={follows} showFollowAll={!isMe} showAbout={false} className="p" />;
         } else {
           return <FollowsTab id={id} />;
         }
       }
-      case FOLLOWERS: {
+      case ProfileTabType.FOLLOWERS: {
         return <FollowersTab id={id} />;
       }
-      case MUTED: {
+      case ProfileTabType.MUTED: {
         return <MutedList pubkeys={muted} />;
       }
-      case BLOCKED: {
+      case ProfileTabType.BLOCKED: {
         return <BlockList />;
       }
-      case RELAYS: {
+      case ProfileTabType.RELAYS: {
         return <RelaysTab id={id} />;
       }
-      case BOOKMARKS: {
+      case ProfileTabType.BOOKMARKS: {
         return <BookMarksTab id={id} />;
       }
     }
@@ -433,7 +293,7 @@ export default function ProfilePage() {
         <Avatar pubkey={id ?? ""} user={user} onClick={() => setModalImage(user?.picture || "")} className="pointer" />
         <div className="profile-actions">
           {renderIcons()}
-          {!isMe && id && <FollowButton className="primary" pubkey={id} />}
+          {!isMe && id && <FollowButton pubkey={id} />}
         </div>
       </div>
     );
@@ -444,10 +304,8 @@ export default function ProfilePage() {
 
     const link = encodeTLV(NostrPrefix.Profile, id);
     return (
-      <div className="icon-actions">
-        <IconButton onClick={() => setShowProfileQr(true)}>
-          <Icon name="qr" size={16} />
-        </IconButton>
+      <>
+        <IconButton onClick={() => setShowProfileQr(true)} icon={{ name: "qr", size: 16 }} />
         {showProfileQr && (
           <Modal id="profile-qr" className="qr-modal" onClose={() => setShowProfileQr(false)}>
             <ProfileImage pubkey={id} />
@@ -463,11 +321,7 @@ export default function ProfilePage() {
           </>
         ) : (
           <>
-            {lnurl && (
-              <IconButton onClick={() => setShowLnQr(true)}>
-                <Icon name="zap" size={16} />
-              </IconButton>
-            )}
+            {lnurl && <IconButton onClick={() => setShowLnQr(true)} icon={{ name: "zap", size: 16 }} />}
             {loginPubKey && !login.readonly && (
               <>
                 <IconButton
@@ -479,14 +333,14 @@ export default function ProfilePage() {
                         value: id,
                       })}`,
                     )
-                  }>
-                  <Icon name="envelope" size={16} />
-                </IconButton>
+                  }
+                  icon={{ name: "envelope", size: 16 }}
+                />
               </>
             )}
           </>
         )}
-      </div>
+      </>
     );
   }
 

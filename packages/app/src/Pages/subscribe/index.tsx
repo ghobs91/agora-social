@@ -1,7 +1,7 @@
 import "./index.css";
 
 import { useState } from "react";
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 import { RouteObject } from "react-router-dom";
 
 import { formatShort } from "Number";
@@ -9,15 +9,16 @@ import { LockedFeatures, Plans, SubscriptionType } from "Subscription";
 import ManageSubscriptionPage from "Pages/subscribe/ManageSubscription";
 import AsyncButton from "Element/AsyncButton";
 import useEventPublisher from "Hooks/useEventPublisher";
-import SnortApi, { SubscriptionError, SubscriptionErrorCode } from "SnortApi";
+import SnortApi, { SubscriptionError, SubscriptionErrorCode } from "External/SnortApi";
 import SendSats from "Element/SendSats";
+import classNames from "classnames";
 
 export function mapPlanName(id: number) {
   switch (id) {
     case SubscriptionType.Supporter:
       return <FormattedMessage defaultMessage="Supporter" />;
     case SubscriptionType.Premium:
-      return <FormattedMessage defaultMessage="Premium" />;
+      return <FormattedMessage defaultMessage="PRO" />;
   }
 }
 
@@ -58,7 +59,7 @@ export function mapSubscriptionErrorCode(c: SubscriptionError) {
 }
 
 export function SubscribePage() {
-  const publisher = useEventPublisher();
+  const { publisher } = useEventPublisher();
   const api = new SnortApi(undefined, publisher);
   const [invoice, setInvoice] = useState("");
   const [error, setError] = useState<SubscriptionError>();
@@ -81,20 +82,21 @@ export function SubscribePage() {
         {Plans.map(a => {
           const lower = Plans.filter(b => b.id < a.id);
           return (
-            <div className={`p flex-column${a.disabled ? " disabled" : ""}`}>
-              <div className="f-grow">
+            <div className={classNames("p flex flex-col g8", { disabled: a.disabled })}>
+              <div className="grow">
                 <h2>{mapPlanName(a.id)}</h2>
                 <p>
                   <FormattedMessage
-                    defaultMessage="Subscribe to Snort {plan} for {price} and receive the following rewards"
+                    defaultMessage="Subscribe to {site_name} {plan} for {price} and receive the following rewards"
                     values={{
+                      site_name: CONFIG.appNameCapitalized,
                       plan: mapPlanName(a.id),
                       price: <b>{formatShort(a.price)} sats/mo</b>,
                     }}
                   />
                   :
                 </p>
-                <ul>
+                <ul className="list-disc">
                   {a.unlocks.map(b => (
                     <li>{mapFeatureName(b)} </li>
                   ))}
@@ -110,7 +112,7 @@ export function SubscribePage() {
                   ))}
                 </ul>
               </div>
-              <div className="flex f-center w-max mb10">
+              <div className="flex justify-center">
                 <AsyncButton className="button" disabled={a.disabled} onClick={() => subscribe(a.id)}>
                   {a.disabled ? (
                     <FormattedMessage defaultMessage="Coming soon" />

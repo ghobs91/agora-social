@@ -1,12 +1,12 @@
 import "./Relay.css";
-import { useMemo } from "react";
-import FormattedMessage from "Element/FormattedMessage";
+import { useContext, useMemo } from "react";
+import { FormattedMessage } from "react-intl";
 import { useNavigate } from "react-router-dom";
 import { RelaySettings } from "@snort/system";
 import { unixNowMs } from "@snort/shared";
 
 import useRelayState from "Feed/RelayState";
-import { System } from "index";
+import { SnortContext } from "@snort/system-react";
 import { getRelayName, unwrap } from "SnortUtils";
 import useLogin from "Hooks/useLogin";
 import { setRelays } from "Login";
@@ -20,9 +20,11 @@ export interface RelayProps {
 
 export default function Relay(props: RelayProps) {
   const navigate = useNavigate();
+  const system = useContext(SnortContext);
   const login = useLogin();
+
   const relaySettings = unwrap(
-    login.relays.item[props.addr] ?? System.Sockets.find(a => a.address === props.addr)?.settings ?? {},
+    login.relays.item[props.addr] ?? system.Sockets.find(a => a.address === props.addr)?.settings ?? {},
   );
   const state = useRelayState(props.addr);
   const name = useMemo(() => getRelayName(props.addr), [props.addr]);
@@ -44,7 +46,7 @@ export default function Relay(props: RelayProps) {
         <div className={`flex ${state?.connected ? "bg-success" : "bg-error"}`}>
           <Icon name="wifi" />
         </div>
-        <div className="f-grow f-col">
+        <div className="grow flex-col">
           <div className="flex mb10">
             <b className="f-2">{name}</b>
             <div className="f-1">
@@ -75,7 +77,7 @@ export default function Relay(props: RelayProps) {
             </div>
           </div>
           <div className="flex">
-            <div className="f-grow"></div>
+            <div className="grow"></div>
             <div>
               <span className="icon-btn" onClick={() => navigate(state?.id ?? "")}>
                 <Icon name="gear" size={12} />

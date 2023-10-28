@@ -1,12 +1,13 @@
 import { v4 as uuid } from "uuid";
 import debug from "debug";
 import WebSocket from "isomorphic-ws";
-import { unwrap, ExternalStore, unixNowMs } from "@snort/shared";
+import { unwrap, ExternalStore, unixNowMs, dedupe } from "@snort/shared";
 
 import { DefaultConnectTimeout } from "./const";
 import { ConnectionStats } from "./connection-stats";
-import { NostrEvent, ReqCommand, TaggedNostrEvent, u256 } from "./nostr";
+import { NostrEvent, ReqCommand, ReqFilter, TaggedNostrEvent, u256 } from "./nostr";
 import { RelayInfo } from "./relay-info";
+import EventKind from "./event-kind";
 
 export type AuthHandler = (challenge: string, relay: string) => Promise<NostrEvent | undefined>;
 
@@ -16,6 +17,13 @@ export type AuthHandler = (challenge: string, relay: string) => Promise<NostrEve
 export interface RelaySettings {
   read: boolean;
   write: boolean;
+}
+
+export interface OkResponse {
+  ok: boolean;
+  id: string;
+  relay: string;
+  message?: string;
 }
 
 /**
@@ -39,9 +47,10 @@ export interface ConnectionStateSnapshot {
 }
 
 export class Connection extends ExternalStore<ConnectionStateSnapshot> {
-  #log = debug("Connection");
+  #log: debug.Debugger;
   #ephemeralCheck?: ReturnType<typeof setInterval>;
   #activity: number = unixNowMs();
+  #expectAuth = false;
 
   Id: string;
   Address: string;
@@ -61,7 +70,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
   HasStateChange: boolean = true;
   IsClosed: boolean;
   ReconnectTimer?: ReturnType<typeof setTimeout>;
-  EventsCallback: Map<u256, (msg: boolean[]) => void>;
+  EventsCallback: Map<u256, (msg: Array<string | boolean>) => void>;
   OnConnected?: (wasReconnect: boolean) => void;
   OnEvent?: (sub: string, e: TaggedNostrEvent) => void;
   OnEose?: (sub: string) => void;
@@ -82,6 +91,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
     this.AwaitingAuth = new Map();
     this.Auth = auth;
     this.Ephemeral = ephemeral;
+    this.#log = debug("Connection").extend(addr);
   }
 
   async Connect() {
@@ -132,7 +142,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
 
   OnOpen(wasReconnect: boolean) {
     this.ConnectTimeout = DefaultConnectTimeout;
-    this.#log(`[${this.Address}] Open!`);
+    this.#log(`Open!`);
     this.Down = false;
     this.#setupEphemeral();
     this.OnConnected?.(wasReconnect);
@@ -148,47 +158,47 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
     // remote server closed the connection, dont re-connect
     if (e.code === 4000) {
       this.IsClosed = true;
-      this.#log(`[${this.Address}] Closed! (Remote)`);
+      this.#log(`Closed! (Remote)`);
     } else if (!this.IsClosed) {
       this.ConnectTimeout = this.ConnectTimeout * 2;
       this.#log(
-        `[${this.Address}] Closed (code=${e.code}), trying again in ${(this.ConnectTimeout / 1000)
-          .toFixed(0)
-          .toLocaleString()} sec`,
+        `Closed (code=${e.code}), trying again in ${(this.ConnectTimeout / 1000).toFixed(0).toLocaleString()} sec`,
       );
       this.ReconnectTimer = setTimeout(() => {
         this.Connect();
       }, this.ConnectTimeout);
       this.Stats.Disconnects++;
     } else {
-      this.#log(`[${this.Address}] Closed!`);
+      this.#log(`Closed!`);
       this.ReconnectTimer = undefined;
     }
 
     this.OnDisconnect?.(e.code);
-    this.#resetQueues();
-    // reset connection Id on disconnect, for query-tracking
-    this.Id = uuid();
+    this.#reset();
     this.notifyChange();
   }
 
   OnMessage(e: WebSocket.MessageEvent) {
     this.#activity = unixNowMs();
     if ((e.data as string).length > 0) {
-      const msg = JSON.parse(e.data as string);
-      const tag = msg[0];
+      const msg = JSON.parse(e.data as string) as Array<string | NostrEvent | boolean>;
+      const tag = msg[0] as string;
       switch (tag) {
         case "AUTH": {
-          this.#onAuthAsync(msg[1])
-            .then(() => this.#sendPendingRaw())
-            .catch(this.#log);
-          this.Stats.EventsReceived++;
-          this.notifyChange();
+          if (this.#expectAuth) {
+            this.#onAuthAsync(msg[1] as string)
+              .then(() => this.#sendPendingRaw())
+              .catch(this.#log);
+            this.Stats.EventsReceived++;
+            this.notifyChange();
+          } else {
+            this.#log("Ignoring unexpected AUTH request");
+          }
           break;
         }
         case "EVENT": {
-          this.OnEvent?.(msg[1], {
-            ...msg[2],
+          this.OnEvent?.(msg[1] as string, {
+            ...(msg[2] as NostrEvent),
             relays: [this.Address],
           });
           this.Stats.EventsReceived++;
@@ -196,22 +206,22 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
           break;
         }
         case "EOSE": {
-          this.OnEose?.(msg[1]);
+          this.OnEose?.(msg[1] as string);
           break;
         }
         case "OK": {
           // feedback to broadcast call
-          this.#log(`${this.Address} OK: %O`, msg);
-          const id = msg[1];
-          if (this.EventsCallback.has(id)) {
-            const cb = unwrap(this.EventsCallback.get(id));
+          this.#log(`OK: %O`, msg);
+          const id = msg[1] as string;
+          const cb = this.EventsCallback.get(id);
+          if (cb) {
             this.EventsCallback.delete(id);
-            cb(msg);
+            cb(msg as Array<string | boolean>);
           }
           break;
         }
         case "NOTICE": {
-          this.#log(`[${this.Address}] NOTICE: ${msg[1]}`);
+          this.#log(`NOTICE: ${msg[1]}`);
           break;
         }
         default: {
@@ -244,17 +254,40 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
    * Send event on this connection and wait for OK response
    */
   async SendAsync(e: NostrEvent, timeout = 5000) {
-    return new Promise<void>(resolve => {
+    return await new Promise<OkResponse>((resolve, reject) => {
       if (!this.Settings.write) {
-        resolve();
+        reject(new Error("Not a write relay"));
+        return;
+      }
+
+      if (this.EventsCallback.has(e.id)) {
+        resolve({
+          ok: false,
+          id: e.id,
+          relay: this.Address,
+          message: "Duplicate request",
+        });
         return;
       }
       const t = setTimeout(() => {
-        resolve();
+        this.EventsCallback.delete(e.id);
+        resolve({
+          ok: false,
+          id: e.id,
+          relay: this.Address,
+          message: "Timeout waiting for OK response",
+        });
       }, timeout);
-      this.EventsCallback.set(e.id, () => {
+
+      this.EventsCallback.set(e.id, msg => {
         clearTimeout(t);
-        resolve();
+        const [_, id, accepted, message] = msg;
+        resolve({
+          ok: accepted as boolean,
+          id: id as string,
+          relay: this.Address,
+          message: message as string | undefined,
+        });
       });
 
       const req = ["EVENT", e];
@@ -276,12 +309,23 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
    * @param cmd The REQ to send to the server
    */
   QueueReq(cmd: ReqCommand, cbSent: () => void) {
+    const requestKinds = dedupe(
+      cmd
+        .slice(2)
+        .map(a => (a as ReqFilter).kinds ?? [])
+        .flat(),
+    );
+    const ExpectAuth = [EventKind.DirectMessage, EventKind.GiftWrap];
+    if (ExpectAuth.some(a => requestKinds.includes(a)) && !this.#expectAuth) {
+      this.#expectAuth = true;
+      this.#log("Setting expectAuth flag %o", requestKinds);
+    }
     if (this.ActiveRequests.size >= this.#maxSubscriptions) {
       this.PendingRequests.push({
         cmd,
         cb: cbSent,
       });
-      this.#log("Queuing: %s %O", this.Address, cmd);
+      this.#log("Queuing: %O", cmd);
     } else {
       this.ActiveRequests.add(cmd[1]);
       this.#sendJson(cmd);
@@ -329,13 +373,16 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
           this.ActiveRequests.add(p.cmd[1]);
           this.#sendJson(p.cmd);
           p.cb();
-          this.#log("Sent pending REQ %s %O", this.Address, p.cmd);
+          this.#log("Sent pending REQ %O", p.cmd);
         }
       }
     }
   }
 
-  #resetQueues() {
+  #reset() {
+    // reset connection Id on disconnect, for query-tracking
+    this.Id = uuid();
+    this.#expectAuth = false;
     this.ActiveRequests.clear();
     this.PendingRequests = [];
     this.PendingRaw = [];
@@ -344,7 +391,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
 
   #sendJson(obj: object) {
     const authPending = !this.Authed && (this.AwaitingAuth.size > 0 || this.Info?.limitation?.auth_required === true);
-    if (this.Socket?.readyState !== WebSocket.OPEN || authPending) {
+    if (!this.Socket || this.Socket?.readyState !== WebSocket.OPEN || authPending) {
       this.PendingRaw.push(obj);
       if (this.Socket?.readyState === WebSocket.CLOSED && this.Ephemeral && this.IsClosed) {
         this.Connect();
@@ -395,7 +442,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
         resolve();
       }, 10_000);
 
-      this.EventsCallback.set(authEvent.id, (msg: boolean[]) => {
+      this.EventsCallback.set(authEvent.id, msg => {
         clearTimeout(t);
         authCleanup();
         if (msg.length > 3 && msg[2] === true) {
@@ -422,12 +469,7 @@ export class Connection extends ExternalStore<ConnectionStateSnapshot> {
         const lastActivity = unixNowMs() - this.#activity;
         if (lastActivity > 30_000 && !this.IsClosed) {
           if (this.ActiveRequests.size > 0) {
-            this.#log(
-              "%s Inactive connection has %d active requests! %O",
-              this.Address,
-              this.ActiveRequests.size,
-              this.ActiveRequests,
-            );
+            this.#log("Inactive connection has %d active requests! %O", this.ActiveRequests.size, this.ActiveRequests);
           } else {
             this.Close();
           }

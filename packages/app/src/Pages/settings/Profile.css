@@ -33,7 +33,7 @@
   bottom: -32px;
 }
 
-.settings .image-settings .avatar-stack .btn-rnd {
+.settings .image-settings .avatar-stack button {
   position: absolute;
   padding: 0;
   width: 32px;
@@ -56,9 +56,4 @@
 
 .settings .actions {
   margin-top: 16px;
-}
-
-.settings small {
-  font-size: 14px;
-  color: var(--font-secondary-color);
 }

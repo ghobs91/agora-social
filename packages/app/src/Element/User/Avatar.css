@@ -8,15 +8,13 @@
   background-clip: content-box, border-box;
   background-size: cover;
   box-sizing: border-box;
+  background-position: center;
   background-color: var(--gray);
 }
 
+.avatar[data-domain="iris.to"],
 .avatar[data-domain="snort.social"] {
   background-image: var(--img-url), var(--snort-gradient);
-}
-
-.avatar[data-domain="strike.army"] {
-  background-image: var(--img-url), var(--strike-army-gradient);
 }
 
 .avatar .overlay {
@@ -38,15 +36,4 @@
   justify-content: center;
   transform-origin: center;
   transform: rotate(-135deg) translateY(50%);
-}
-
-.avatar .icons > .icon-circle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform-origin: center;
-  padding: 4px;
-  border-radius: 100%;
-  background-color: var(--gray-superdark);
-  transform: rotate(135deg);
 }

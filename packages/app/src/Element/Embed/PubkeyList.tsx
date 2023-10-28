@@ -2,12 +2,11 @@ import { NostrEvent } from "@snort/system";
 import { FormattedMessage, FormattedNumber } from "react-intl";
 import { LNURL } from "@snort/shared";
 
-import { dedupe, hexToBech32 } from "SnortUtils";
+import { dedupe, findTag, hexToBech32, getDisplayName } from "SnortUtils";
 import FollowListBase from "Element/User/FollowListBase";
 import AsyncButton from "Element/AsyncButton";
 import { useWallet } from "Wallet";
 import { Toastore } from "Toaster";
-import { getDisplayName } from "Element/User/ProfileImage";
 import { UserCache } from "Cache";
 import useLogin from "Hooks/useLogin";
 import useEventPublisher from "Hooks/useEventPublisher";
@@ -16,7 +15,7 @@ import { WalletInvoiceState } from "Wallet";
 export default function PubkeyList({ ev, className }: { ev: NostrEvent; className?: string }) {
   const wallet = useWallet();
   const login = useLogin();
-  const publisher = useEventPublisher();
+  const { publisher } = useEventPublisher();
   const ids = dedupe(ev.tags.filter(a => a[0] === "p").map(a => a[1]));
 
   async function zapAll() {
@@ -66,12 +65,12 @@ export default function PubkeyList({ ev, className }: { ev: NostrEvent; classNam
       pubkeys={ids}
       showAbout={true}
       className={className}
-      title={ev.tags.find(a => a[0] === "d")?.[1]}
+      title={findTag(ev, "title") ?? findTag(ev, "d")}
       actions={
         <>
-          <AsyncButton className="mr5 transparent" onClick={() => zapAll()}>
+          <AsyncButton className="mr5 secondary" onClick={() => zapAll()}>
             <FormattedMessage
-              defaultMessage="Zap All {n} sats"
+              defaultMessage="Zap all {n} sats"
               values={{
                 n: <FormattedNumber value={login.preferences.defaultZapAmount * ids.length} />,
               }}

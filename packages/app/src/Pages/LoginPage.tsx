@@ -19,6 +19,7 @@ import QrCode from "Element/QrCode";
 import Copy from "Element/Copy";
 import { delay } from "SnortUtils";
 import { PinPrompt } from "Element/PinPrompt";
+import useEventPublisher from "Hooks/useEventPublisher";
 
 declare global {
   interface Window {
@@ -85,6 +86,7 @@ export default function LoginPage() {
   const { proxy } = useImgProxy();
   const loginHandler = useLoginHandler();
   const hasNip7 = "nostr" in window;
+  const { system } = useEventPublisher();
   const hasSubtleCrypto = window.crypto.subtle !== undefined;
   const [nostrConnect, setNostrConnect] = useState("");
 
@@ -123,7 +125,7 @@ export default function LoginPage() {
 
   async function makeRandomKey(pin?: string) {
     try {
-      await generateNewLogin(key => makeKeyStore(key, pin));
+      await generateNewLogin(system, key => makeKeyStore(key, pin));
       window.plausible?.("Generate Account");
       navigate("/new");
     } catch (e) {
@@ -143,7 +145,7 @@ export default function LoginPage() {
 
   function generateNip46() {
     const meta = {
-      name: process.env.APP_NAME_CAPITALIZED,
+      name: CONFIG.appNameCapitalized,
       url: window.location.href,
     };
 
@@ -194,7 +196,7 @@ export default function LoginPage() {
               <p>
                 <FormattedMessage defaultMessage="Scan this QR code with your signer app to get started" />
               </p>
-              <div className="flex-column f-center g12">
+              <div className="flex flex-col items-center g12">
                 <QrCode data={nostrConnect} />
                 <Copy text={nostrConnect} />
               </div>
@@ -287,7 +289,7 @@ export default function LoginPage() {
       <div>
         <div className="login-container">
           <h1 className="logo" onClick={() => navigate("/")}>
-            {process.env.APP_NAME}
+            {CONFIG.appName}
           </h1>
           <h1 dir="auto">
             <FormattedMessage defaultMessage="Login" description="Login header" />
@@ -295,14 +297,14 @@ export default function LoginPage() {
           <p dir="auto">
             <FormattedMessage defaultMessage="Your key" description="Label for key input" />
           </p>
-          <div className="flex f-center g8">
+          <div className="flex items-center g8">
             <input
               dir="auto"
               type={isMasking ? "password" : "text"}
               placeholder={formatMessage({
                 defaultMessage: "nsec, npub, nip-05, hex, mnemonic",
               })}
-              className="f-grow"
+              className="grow"
               onChange={e => setKey(e.target.value)}
             />
             <Icon
@@ -342,7 +344,7 @@ export default function LoginPage() {
                       <FormattedMessage
                         defaultMessage="Secure your private key with a PIN, ensuring enhanced protection on {site}. You'll be prompted to enter this PIN each time you access the site."
                         values={{
-                          site: process.env.APP_NAME_CAPITALIZED,
+                          site: CONFIG.appNameCapitalized,
                         }}
                       />
                     </p>

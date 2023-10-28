@@ -1,21 +1,25 @@
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
-import { HexKey } from "@snort/system";
-
+import { NostrLink, NostrPrefix } from "@snort/system";
 import { useUserProfile } from "@snort/system-react";
-import { profileLink } from "SnortUtils";
-import { getDisplayName } from "Element/User/ProfileImage";
+import { useHover } from "@uidotdev/usehooks";
 
-export default function Mention({ pubkey, relays }: { pubkey: HexKey; relays?: Array<string> | string }) {
-  const user = useUserProfile(pubkey);
+import DisplayName from "Element/User/DisplayName";
+import { ProfileCard } from "Element/User/ProfileCard";
+import { ProfileLink } from "Element/User/ProfileLink";
 
-  const name = useMemo(() => {
-    return getDisplayName(user, pubkey);
-  }, [user, pubkey]);
+export default function Mention({ link }: { link: NostrLink }) {
+  const [ref, hovering] = useHover<HTMLAnchorElement>();
+  const profile = useUserProfile(link.id);
+
+  if (link.type !== NostrPrefix.Profile && link.type !== NostrPrefix.PublicKey) return;
 
   return (
-    <Link to={profileLink(pubkey, relays)} onClick={e => e.stopPropagation()}>
-      @{name}
-    </Link>
+    <>
+      <ProfileLink pubkey={link.id} user={profile} onClick={e => e.stopPropagation()}>
+        <span ref={ref}>
+          @<DisplayName user={profile} pubkey={link.id} />
+        </span>
+      </ProfileLink>
+      <ProfileCard pubkey={link.id} user={profile} show={hovering} ref={ref} />
+    </>
   );
 }

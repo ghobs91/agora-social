@@ -29,6 +29,7 @@ if (appTitle === "iris") {
   copyPatterns.push({ from: "public/iris/.well-known", to: ".well-known" });
 } else {
   copyPatterns.push({ from: "public/manifest.json" });
+  copyPatterns.push({ from: "public/snort/.well-known", to: ".well-known" });
 }
 
 const config = {
@@ -51,6 +52,7 @@ const config = {
   },
   devServer: {
     open: true,
+    https: true,
     host: "localhost",
     historyApiFallback: true,
   },
@@ -87,9 +89,7 @@ const config = {
         })
       : false,
     new DefinePlugin({
-      "process.env.APP_NAME": JSON.stringify(appConfig.get("appName")),
-      "process.env.APP_NAME_CAPITALIZED": JSON.stringify(appConfig.get("appNameCapitalized")),
-      "process.env.NIP05_DOMAIN": JSON.stringify(appConfig.get("nip05Domain")),
+      CONFIG: JSON.stringify(appConfig),
     }),
   ],
   module: {
@@ -140,7 +140,18 @@ const config = {
       },
       {
         test: /\.css$/i,
-        use: [MiniCssExtractPlugin.loader, require.resolve("css-loader")],
+        use: [
+          MiniCssExtractPlugin.loader,
+          require.resolve("css-loader"),
+          {
+            loader: require.resolve("postcss-loader"),
+            options: {
+              postcssOptions: {
+                plugins: [require("tailwindcss"), require("autoprefixer")],
+              },
+            },
+          },
+        ],
       },
       {
         test: /\.(eot|svg|ttf|woff|woff2|png|jpg|gif|webp|wasm)$/i,

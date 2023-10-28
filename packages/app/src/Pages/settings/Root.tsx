@@ -1,14 +1,14 @@
 import "./Root.css";
 import { useEffect, useMemo } from "react";
-import FormattedMessage from "Element/FormattedMessage";
+import { FormattedMessage } from "react-intl";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import Icon from "Icons/Icon";
 import { LoginStore, logout } from "Login";
 import useLogin from "Hooks/useLogin";
 import { getCurrentSubscription } from "Subscription";
+import usePageWidth from "Hooks/usePageWidth";
 
 import messages from "./messages";
-import usePageWidth from "Hooks/usePageWidth";
 
 const SettingsIndex = () => {
   const login = useLogin();
@@ -58,14 +58,16 @@ const SettingsIndex = () => {
           </div>
           <div className="settings-row" onClick={() => navigate("handle")}>
             <Icon name="badge" size={24} />
-            <FormattedMessage defaultMessage="Nostr Adddress" />
+            <FormattedMessage defaultMessage="Nostr Address" />
             <Icon name="arrowFront" size={16} />
           </div>
-          <div className="settings-row" onClick={() => navigate("/subscribe/manage")}>
-            <Icon name="diamond" size={24} />
-            <FormattedMessage defaultMessage="Subscription" />
-            <Icon name="arrowFront" size={16} />
-          </div>
+          {CONFIG.features.subscriptions && (
+            <div className="settings-row" onClick={() => navigate("/subscribe/manage")}>
+              <Icon name="diamond" size={24} />
+              <FormattedMessage defaultMessage="Subscription" />
+              <Icon name="arrowFront" size={16} />
+            </div>
+          )}
           {sub && (
             <div className="settings-row" onClick={() => navigate("accounts")}>
               <Icon name="code-circle" size={24} />
@@ -90,9 +92,16 @@ const SettingsIndex = () => {
             <FormattedMessage {...messages.Donate} />
             <Icon name="arrowFront" size={16} />
           </div>
-          <div className="settings-row" onClick={() => navigate("/zap-pool")}>
-            <Icon name="piggy-bank" size={24} />
-            <FormattedMessage defaultMessage="Zap Pool" />
+          {CONFIG.features.zapPool && (
+            <div className="settings-row" onClick={() => navigate("/zap-pool")}>
+              <Icon name="piggy-bank" size={24} />
+              <FormattedMessage defaultMessage="Zap Pool" />
+              <Icon name="arrowFront" size={16} />
+            </div>
+          )}
+          <div className="settings-row" onClick={() => navigate("cache")}>
+            <Icon name="hard-drive" size={24} />
+            <FormattedMessage defaultMessage="Cache" />
             <Icon name="arrowFront" size={16} />
           </div>
           <div className="settings-row" onClick={handleLogout}>

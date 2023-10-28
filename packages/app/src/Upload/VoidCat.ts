@@ -1,9 +1,9 @@
 import { EventKind, EventPublisher } from "@snort/system";
-import { VoidApi } from "@void-cat/api";
+import { UploadState, VoidApi } from "@void-cat/api";
 
 import { FileExtensionRegex, VoidCatHost } from "Const";
 import { UploadResult } from "Upload";
-import { magnetURIDecode } from "SnortUtils";
+import { base64 } from "@scure/base";
 
 /**
  * Upload file to void.cat
@@ -13,9 +13,40 @@ export default async function VoidCatUpload(
   file: File | Blob,
   filename: string,
   publisher?: EventPublisher,
+  progress?: (n: number) => void,
+  stage?: (n: "starting" | "hashing" | "uploading" | "done" | undefined) => void,
 ): Promise<UploadResult> {
-  const api = new VoidApi(VoidCatHost);
-  const uploader = api.getUploader(file);
+  const auth = publisher
+    ? async (url: string, method: string) => {
+        const auth = await publisher.generic(eb => {
+          return eb.kind(EventKind.HttpAuthentication).tag(["u", url]).tag(["method", method]);
+        });
+        return `Nostr ${base64.encode(new TextEncoder().encode(JSON.stringify(auth)))}`;
+      }
+    : undefined;
+  const api = new VoidApi(VoidCatHost, auth);
+  const uploader = api.getUploader(
+    file,
+    sx => {
+      stage?.(
+        (() => {
+          switch (sx) {
+            case UploadState.Starting:
+              return "starting";
+            case UploadState.Hashing:
+              return "hashing";
+            case UploadState.Uploading:
+              return "uploading";
+            case UploadState.Done:
+              return "done";
+          }
+        })(),
+      );
+    },
+    px => {
+      progress?.(px / file.size);
+    },
+  );
 
   const rsp = await uploader.upload({
     "V-Strip-Metadata": "true",
@@ -32,7 +63,8 @@ export default async function VoidCatUpload(
     } as UploadResult;
 
     if (publisher) {
-      const tags = [
+      // NIP-94
+      /*const tags = [
         ["url", resultUrl],
         ["x", rsp.file?.metadata?.digest ?? ""],
         ["m", rsp.file?.metadata?.mimeType ?? "application/octet-stream"],
@@ -51,7 +83,7 @@ export default async function VoidCatUpload(
         eb.kind(EventKind.FileHeader).content(filename);
         tags.forEach(t => eb.tag(t));
         return eb;
-      });
+      });*/
     }
     return ret;
   } else {

@@ -10,7 +10,7 @@ interface Newest<T> {
   timestamp: number;
 }
 
-export enum LoginSessionType {
+export const enum LoginSessionType {
   PrivateKey = "private_key",
   PublicKey = "public_key",
   Nip7 = "nip7",
@@ -128,4 +128,9 @@ export interface LoginSession {
    * A list of chats which we have joined (NIP-28/NIP-29)
    */
   extraChats: Array<string>;
+
+  /**
+   * Is login session in stalker mode
+   */
+  stalker: boolean;
 }

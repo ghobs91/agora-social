@@ -1,5 +1,15 @@
 import { bech32ToHex, hexToBech32, unwrap } from "@snort/shared";
-import { NostrPrefix, decodeTLV, TLVEntryType, encodeTLV, NostrEvent, TaggedNostrEvent } from ".";
+import {
+  decodeTLV,
+  encodeTLV,
+  EventExt,
+  EventKind,
+  NostrEvent,
+  NostrPrefix,
+  Tag,
+  TaggedNostrEvent,
+  TLVEntryType,
+} from ".";
 import { findTag } from "./utils";
 
 export class NostrLink {
@@ -11,11 +21,13 @@ export class NostrLink {
     readonly relays?: Array<string>,
   ) {}
 
-  encode(): string {
-    if (this.type === NostrPrefix.Note || this.type === NostrPrefix.PrivateKey || this.type === NostrPrefix.PublicKey) {
-      return hexToBech32(this.type, this.id);
+  encode(type?: NostrPrefix): string {
+    // cant encode 'naddr' to 'note'/'nevent' because 'id' is not hex
+    let newType = this.type === NostrPrefix.Address ? this.type : type ?? this.type;
+    if (newType === NostrPrefix.Note || newType === NostrPrefix.PrivateKey || newType === NostrPrefix.PublicKey) {
+      return hexToBech32(newType, this.id);
     } else {
-      return encodeTLV(this.type, this.id, this.relays, this.kind, this.author);
+      return encodeTLV(newType, this.id, this.relays, this.kind, this.author);
     }
   }
 
@@ -41,6 +53,99 @@ export class NostrLink {
     }
 
     return false;
+  }
+
+  /**
+   * Is the supplied event a reply to this link
+   */
+  isReplyToThis(ev: NostrEvent) {
+    const NonNip10Kinds = [EventKind.Reaction, EventKind.Repost, EventKind.ZapReceipt];
+    if (NonNip10Kinds.includes(ev.kind)) {
+      const lastRef = ev.tags.findLast(a => a[0] === "e" || a[1] === "a");
+      if (!lastRef) return false;
+
+      if (
+        lastRef[0] === "e" &&
+        lastRef[1] === this.id &&
+        (this.type === NostrPrefix.Event || this.type === NostrPrefix.Note)
+      ) {
+        return true;
+      }
+      if (lastRef[0] === "a" && this.type === NostrPrefix.Address) {
+        const [kind, author, dTag] = lastRef[1].split(":");
+        if (Number(kind) === this.kind && author === this.author && dTag === this.id) {
+          return true;
+        }
+      }
+    } else {
+      const thread = EventExt.extractThread(ev);
+      if (!thread) return false; // non-thread events are not replies
+
+      if (!thread.root) return false; // must have root marker or positional e/a tag in position 0
+
+      if (
+        thread.root.key === "e" &&
+        thread.root.value === this.id &&
+        (this.type === NostrPrefix.Event || this.type === NostrPrefix.Note)
+      ) {
+        return true;
+      }
+      if (thread.root.key === "a" && this.type === NostrPrefix.Address) {
+        const [kind, author, dTag] = unwrap(thread.root.value).split(":");
+        if (Number(kind) === this.kind && author === this.author && dTag === this.id) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Does the supplied event contain a tag matching this link
+   */
+  referencesThis(ev: NostrEvent) {
+    for (const t of ev.tags) {
+      if (t[0] === "e" && t[1] === this.id && (this.type === NostrPrefix.Event || this.type === NostrPrefix.Note)) {
+        return true;
+      }
+      if (t[0] === "a" && this.type === NostrPrefix.Address) {
+        const [kind, author, dTag] = t[1].split(":");
+        if (Number(kind) === this.kind && author === this.author && dTag === this.id) {
+          return true;
+        }
+      }
+      if (
+        t[0] === "p" &&
+        (this.type === NostrPrefix.Profile || this.type === NostrPrefix.PublicKey) &&
+        this.id === t[1]
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  equals(other: NostrLink) {
+    if (other.type === this.type && this.type === NostrPrefix.Address) {
+    }
+  }
+
+  static fromThreadTag(tag: Tag) {
+    const relay = tag.relay ? [tag.relay] : undefined;
+
+    switch (tag.key) {
+      case "e": {
+        return new NostrLink(NostrPrefix.Event, unwrap(tag.value), undefined, undefined, relay);
+      }
+      case "p": {
+        return new NostrLink(NostrPrefix.Profile, unwrap(tag.value), undefined, undefined, relay);
+      }
+      case "a": {
+        const [kind, author, dTag] = unwrap(tag.value).split(":");
+        return new NostrLink(NostrPrefix.Address, dTag, Number(kind), author, relay);
+      }
+    }
+    throw new Error(`Unknown tag kind ${tag.key}`);
   }
 
   static fromTag(tag: Array<string>) {

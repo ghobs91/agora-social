@@ -1,25 +1,26 @@
-import React, { HTMLProps, useContext, useEffect, useState } from "react";
-import { useIntl } from "react-intl";
+import React, { forwardRef, useEffect, useState } from "react";
+import { FormattedMessage, useIntl } from "react-intl";
 import { useLongPress } from "use-long-press";
 import { TaggedNostrEvent, ParsedZap, countLeadingZeros, NostrLink } from "@snort/system";
-import { SnortContext, useUserProfile } from "@snort/system-react";
+import { normalizeReaction } from "@snort/shared";
+import { useUserProfile } from "@snort/system-react";
+import { Menu, MenuItem } from "@szhsin/react-menu";
+import classNames from "classnames";
 
 import { formatShort } from "Number";
 import useEventPublisher from "Hooks/useEventPublisher";
-import { delay, findTag, normalizeReaction } from "SnortUtils";
-import { NoteCreator } from "Element/Event/NoteCreator";
+import { delay, findTag, getDisplayName } from "SnortUtils";
 import SendSats from "Element/SendSats";
 import { ZapsSummary } from "Element/Event/Zap";
-import { AsyncIcon } from "Element/AsyncIcon";
+import { AsyncIcon, AsyncIconProps } from "Element/AsyncIcon";
 
 import { useWallet } from "Wallet";
 import useLogin from "Hooks/useLogin";
 import { useInteractionCache } from "Hooks/useInteractionCache";
 import { ZapPoolController } from "ZapPoolController";
-import { System } from "index";
 import { Zapper, ZapTarget } from "Zapper";
-import { getDisplayName } from "../User/ProfileImage";
 import { useNoteCreator } from "State/NoteCreator";
+import Icon from "Icons/Icon";
 
 import messages from "../messages";
 
@@ -40,12 +41,12 @@ export interface NoteFooterProps {
   reposts: TaggedNostrEvent[];
   zaps: ParsedZap[];
   positive: TaggedNostrEvent[];
+  replies?: number;
   ev: TaggedNostrEvent;
 }
 
 export default function NoteFooter(props: NoteFooterProps) {
   const { ev, positive, reposts, zaps } = props;
-  const system = useContext(SnortContext);
   const { formatMessage } = useIntl();
   const {
     publicKey,
@@ -54,9 +55,8 @@ export default function NoteFooter(props: NoteFooterProps) {
   } = useLogin(s => ({ preferences: s.preferences, publicKey: s.publicKey, readonly: s.readonly }));
   const author = useUserProfile(ev.pubkey);
   const interactionCache = useInteractionCache(publicKey, ev.id);
-  const publisher = useEventPublisher();
-  const note = useNoteCreator(n => ({ show: n.show, replyTo: n.replyTo, update: n.update }));
-  const willRenderNoteCreator = note.show && note.replyTo?.id === ev.id;
+  const { publisher, system } = useEventPublisher();
+  const note = useNoteCreator(n => ({ show: n.show, replyTo: n.replyTo, update: n.update, quote: n.quote }));
   const [tip, setTip] = useState(false);
   const [zapping, setZapping] = useState(false);
   const walletState = useWallet();
@@ -90,7 +90,7 @@ export default function NoteFooter(props: NoteFooterProps) {
   async function react(content: string) {
     if (!hasReacted(content) && publisher) {
       const evLike = await publisher.react(ev, content);
-      System.BroadcastEvent(evLike);
+      system.BroadcastEvent(evLike);
       await interactionCache.react();
     }
   }
@@ -99,7 +99,7 @@ export default function NoteFooter(props: NoteFooterProps) {
     if (!hasReposted() && publisher) {
       if (!prefs.confirmReposts || window.confirm(formatMessage(messages.ConfirmRepost, { id: ev.id }))) {
         const evRepost = await publisher.repost(ev);
-        System.BroadcastEvent(evRepost);
+        system.BroadcastEvent(evRepost);
         await interactionCache.repost();
       }
     }
@@ -156,7 +156,9 @@ export default function NoteFooter(props: NoteFooterProps) {
         const result = await zapper.send(wallet, targets, amount);
         const totalSent = result.reduce((acc, v) => (acc += v.sent), 0);
         if (totalSent > 0) {
-          ZapPoolController.allocate(totalSent);
+          if (CONFIG.features.zapPool) {
+            ZapPoolController?.allocate(totalSent);
+          }
           await interactionCache.zap();
         }
       });
@@ -195,7 +197,7 @@ export default function NoteFooter(props: NoteFooterProps) {
     if (targets) {
       return (
         <AsyncFooterIcon
-          className={didZap ? "reacted" : ""}
+          className={didZap ? "reacted text-nostr-orange" : "hover:text-nostr-orange"}
           {...longPress()}
           title={formatMessage({ defaultMessage: "Zap" })}
           iconName={canFastZap ? "zapFast" : "zap"}
@@ -210,16 +212,40 @@ export default function NoteFooter(props: NoteFooterProps) {
   function repostIcon() {
     if (readonly) return;
     return (
-      <AsyncFooterIcon
-        className={hasReposted() ? "reacted" : ""}
-        iconName="repeat"
-        title={formatMessage({ defaultMessage: "Repost" })}
-        value={reposts.length}
-        onClick={async () => {
-          if (readonly) return;
-          await repost();
-        }}
-      />
+      <Menu
+        menuButton={
+          <AsyncFooterIcon
+            className={hasReposted() ? "reacted text-nostr-blue" : "hover:text-nostr-blue"}
+            iconName="repeat"
+            title={formatMessage({ defaultMessage: "Repost" })}
+            value={reposts.length}
+          />
+        }
+        menuClassName="ctx-menu"
+        align="start">
+        <div className="close-menu-container">
+          {/* This menu item serves as a "close menu" button;
+          it allows the user to click anywhere nearby the menu to close it. */}
+          <MenuItem>
+            <div className="close-menu" />
+          </MenuItem>
+        </div>
+        <MenuItem onClick={() => repost()} disabled={hasReposted()}>
+          <Icon name="repeat" />
+          <FormattedMessage defaultMessage="Repost" />
+        </MenuItem>
+        <MenuItem
+          onClick={() =>
+            note.update(n => {
+              n.reset();
+              n.quote = ev;
+              n.show = true;
+            })
+          }>
+          <Icon name="edit" />
+          <FormattedMessage defaultMessage="Quote Repost" />
+        </MenuItem>
+      </Menu>
     );
   }
 
@@ -230,7 +256,7 @@ export default function NoteFooter(props: NoteFooterProps) {
     const reacted = hasReacted("+");
     return (
       <AsyncFooterIcon
-        className={reacted ? "reacted" : ""}
+        className={reacted ? "reacted text-nostr-red" : "hover:text-nostr-red"}
         iconName={reacted ? "heart-solid" : "heart"}
         title={formatMessage({ defaultMessage: "Like" })}
         value={positive.length}
@@ -246,10 +272,10 @@ export default function NoteFooter(props: NoteFooterProps) {
     if (readonly) return;
     return (
       <AsyncFooterIcon
-        className={note.show ? "reacted" : ""}
+        className={note.show ? "reacted text-nostr-purple" : "hover:text-nostr-purple"}
         iconName="reply"
         title={formatMessage({ defaultMessage: "Reply" })}
-        value={0}
+        value={props.replies ?? 0}
         onClick={async () => handleReplyButtonClick()}
       />
     );
@@ -275,7 +301,6 @@ export default function NoteFooter(props: NoteFooterProps) {
           {tipButton()}
           {powIcon()}
         </div>
-        {willRenderNoteCreator && <NoteCreator key={`note-creator-${ev.id}`} />}
         <SendSats targets={getZapTarget()} onClose={() => setTip(false)} show={tip} note={ev.id} allocatePool={true} />
       </div>
       <ZapsSummary zaps={zaps} />
@@ -283,22 +308,15 @@ export default function NoteFooter(props: NoteFooterProps) {
   );
 }
 
-interface AsyncFooterIconProps extends HTMLProps<HTMLDivElement> {
-  iconName: string;
-  value: number;
-  loading?: boolean;
-  onClick?: (e: React.MouseEvent<HTMLDivElement>) => Promise<void>;
-}
-
-function AsyncFooterIcon(props: AsyncFooterIconProps) {
+const AsyncFooterIcon = forwardRef((props: AsyncIconProps & { value: number }) => {
   const mergedProps = {
     ...props,
     iconSize: 18,
-    className: `reaction-pill${props.className ? ` ${props.className}` : ""}`,
+    className: classNames("transition duration-200 ease-in-out reaction-pill", props.className),
   };
   return (
     <AsyncIcon {...mergedProps}>
       {props.value > 0 && <div className="reaction-pill-number">{formatShort(props.value)}</div>}
     </AsyncIcon>
   );
-}
+});

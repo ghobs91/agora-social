@@ -29,6 +29,9 @@
   "/4tOwT": {
     "defaultMessage": "Skip"
   },
+  "/GCoTA": {
+    "defaultMessage": "Clear"
+  },
   "/JE/X+": {
     "defaultMessage": "Account Support"
   },
@@ -41,6 +44,9 @@
   },
   "/Xf4UW": {
     "defaultMessage": "Send anonymous usage metrics"
+  },
+  "/clOBU": {
+    "defaultMessage": "Weekly"
   },
   "/d6vEc": {
     "defaultMessage": "Make your profile easier to find and share"
@@ -81,11 +87,11 @@
   "1c4YST": {
     "defaultMessage": "Connected to: {node} 🎉"
   },
-  "1iQ8GN": {
-    "defaultMessage": "Toggle Preview"
-  },
   "1nYUGC": {
     "defaultMessage": "{n} Following"
+  },
+  "1o2BgB": {
+    "defaultMessage": "Check Signatures"
   },
   "1udzha": {
     "defaultMessage": "Conversations"
@@ -111,11 +117,11 @@
   "2ukA4d": {
     "defaultMessage": "{n} hours"
   },
+  "2zJXeA": {
+    "defaultMessage": "Profiles"
+  },
   "3KNMbJ": {
     "defaultMessage": "Articles"
-  },
-  "3Rx6Qo": {
-    "defaultMessage": "Advanced"
   },
   "3cc4Ct": {
     "defaultMessage": "Light"
@@ -238,6 +244,9 @@
   "89q5wc": {
     "defaultMessage": "Confirm Reposts"
   },
+  "8ED/4u": {
+    "defaultMessage": "Reply To"
+  },
   "8Kboo2": {
     "defaultMessage": "Scan this QR code with your signer app to get started"
   },
@@ -276,18 +285,21 @@
     "defaultMessage": "Login",
     "description": "Login button"
   },
+  "9kSari": {
+    "defaultMessage": "Retry publishing"
+  },
   "9pMqYs": {
     "defaultMessage": "Nostr Address"
   },
   "9wO4wJ": {
     "defaultMessage": "Lightning Invoice"
   },
+  "ABAQyo": {
+    "defaultMessage": "Chats"
+  },
   "ADmfQT": {
     "defaultMessage": "Parent",
     "description": "Link to parent note in thread"
-  },
-  "AGNz71": {
-    "defaultMessage": "Zap All {n} sats"
   },
   "AN0Z7Q": {
     "defaultMessage": "Muted Words"
@@ -307,6 +319,9 @@
   "AnLrRC": {
     "defaultMessage": "Non-Zap",
     "description": "Non-Zap, Regular LN payment"
+  },
+  "AxDOiG": {
+    "defaultMessage": "Months"
   },
   "AyGauy": {
     "defaultMessage": "Login"
@@ -338,8 +353,8 @@
   "C1LjMx": {
     "defaultMessage": "Lightning Donation"
   },
-  "C5xzTC": {
-    "defaultMessage": "Premium"
+  "C7642/": {
+    "defaultMessage": "Quote Repost"
   },
   "C81/uG": {
     "defaultMessage": "Logout"
@@ -371,6 +386,9 @@
   "D3idYv": {
     "defaultMessage": "Settings"
   },
+  "DBiVK1": {
+    "defaultMessage": "Cache"
+  },
   "DKnriN": {
     "defaultMessage": "Send sats"
   },
@@ -391,6 +409,9 @@
   },
   "E8a4yq": {
     "defaultMessage": "Follow some popular accounts"
+  },
+  "EJbFi7": {
+    "defaultMessage": "Search notes"
   },
   "ELbg9p": {
     "defaultMessage": "Data Providers"
@@ -522,6 +543,9 @@
   "IUZC+0": {
     "defaultMessage": "This means that nobody can modify notes which you have created and everybody can easily verify that the notes they are reading are created by you."
   },
+  "IVbtTS": {
+    "defaultMessage": "Zap all {n} sats"
+  },
   "Ig9/a1": {
     "defaultMessage": "Sent {n} sats to {name}"
   },
@@ -545,6 +569,9 @@
   },
   "JPFYIM": {
     "defaultMessage": "No lightning address"
+  },
+  "JSx7y9": {
+    "defaultMessage": "Subscribe to {site_name} {plan} for {price} and receive the following rewards"
   },
   "JeoS4y": {
     "defaultMessage": "Repost"
@@ -704,6 +731,10 @@
   "PCSt5T": {
     "defaultMessage": "Preferences"
   },
+  "PJeJFc": {
+    "defaultMessage": "Summary",
+    "description": "Notifications summary"
+  },
   "PLSbmL": {
     "defaultMessage": "Your mnemonic phrase"
   },
@@ -800,6 +831,9 @@
   "TDR5ge": {
     "defaultMessage": "Media in notes will automatically be shown for selected people, otherwise only the link will show"
   },
+  "TJo5E6": {
+    "defaultMessage": "Preview"
+  },
   "TP/cMX": {
     "defaultMessage": "Ended"
   },
@@ -810,8 +844,17 @@
   "Tpy00S": {
     "defaultMessage": "People"
   },
+  "U1aPPi": {
+    "defaultMessage": "Stop listening"
+  },
   "UDYlxu": {
     "defaultMessage": "Pending Subscriptions"
+  },
+  "UJTWqI": {
+    "defaultMessage": "Remove from my relays"
+  },
+  "UNjfWJ": {
+    "defaultMessage": "Check all event signatures received from relays"
   },
   "UT7Nkj": {
     "defaultMessage": "New Chat"
@@ -897,9 +940,6 @@
   },
   "YXA3AH": {
     "defaultMessage": "Enable reactions"
-  },
-  "Z0FDj+": {
-    "defaultMessage": "Subscribe to Snort {plan} for {price} and receive the following rewards"
   },
   "Z4BMCZ": {
     "defaultMessage": "Enter pairing phrase"
@@ -1039,6 +1079,9 @@
   "filwqD": {
     "defaultMessage": "Read"
   },
+  "fjAcWo": {
+    "defaultMessage": "Gift Wraps"
+  },
   "flnGvv": {
     "defaultMessage": "What's on your mind?"
   },
@@ -1066,6 +1109,9 @@
   "gczcC5": {
     "defaultMessage": "Subscribe"
   },
+  "geppt8": {
+    "defaultMessage": "{count} ({count2} in memory)"
+  },
   "gjBiyj": {
     "defaultMessage": "Loading..."
   },
@@ -1080,6 +1126,9 @@
   },
   "hMzcSq": {
     "defaultMessage": "Messages"
+  },
+  "hRTfTR": {
+    "defaultMessage": "PRO"
   },
   "hY4lzx": {
     "defaultMessage": "Supports"
@@ -1114,6 +1163,9 @@
   "iXPL0Z": {
     "defaultMessage": "Can't login with private key on an insecure connection, please use a Nostr key manager extension instead"
   },
+  "iYc3Ld": {
+    "defaultMessage": "Payments"
+  },
   "ieGrWo": {
     "defaultMessage": "Follow"
   },
@@ -1125,6 +1177,9 @@
   },
   "jA3OE/": {
     "defaultMessage": "{n,plural,=1{{n} sat} other{{n} sats}}"
+  },
+  "jAmfGl": {
+    "defaultMessage": "Your {site_name} subscription is expired"
   },
   "jMzO1S": {
     "defaultMessage": "Internal error: {msg}"
@@ -1236,11 +1291,11 @@
   "nOaArs": {
     "defaultMessage": "Setup Profile"
   },
-  "nWQFic": {
-    "defaultMessage": "Renew"
-  },
   "ncbgUU": {
     "defaultMessage": "{site} is a Nostr UI, nostr is a decentralised protocol for saving and distributing \"notes\"."
+  },
+  "nihgfo": {
+    "defaultMessage": "Listen to this article"
   },
   "nn1qb3": {
     "defaultMessage": "Your donations are greatly appreciated"
@@ -1301,6 +1356,9 @@
   "qUJTsT": {
     "defaultMessage": "Blocked"
   },
+  "qZsKBR": {
+    "defaultMessage": "Renew {tier}"
+  },
   "qdGuQo": {
     "defaultMessage": "Your Private Key Is (do not share this with anyone)"
   },
@@ -1327,6 +1385,9 @@
   },
   "rT14Ow": {
     "defaultMessage": "Add Relays"
+  },
+  "rbrahO": {
+    "defaultMessage": "Close"
   },
   "reJ6SM": {
     "defaultMessage": "It is recommended to use one of the following browser extensions if you are on a desktop computer to secure your key:"
@@ -1355,6 +1416,9 @@
   "sZQzjQ": {
     "defaultMessage": "Failed to parse zap split: {input}"
   },
+  "tGXF0Q": {
+    "defaultMessage": "Relay Lists"
+  },
   "tOdNiY": {
     "defaultMessage": "Dark"
   },
@@ -1364,8 +1428,14 @@
   "thnRpU": {
     "defaultMessage": "Getting NIP-05 verified can help:"
   },
+  "tjpYlr": {
+    "defaultMessage": "Relay Metrics"
+  },
   "ttxS0b": {
     "defaultMessage": "Supporter Badge"
+  },
+  "u+LyXc": {
+    "defaultMessage": "Interactions"
   },
   "u/vOPu": {
     "defaultMessage": "Paid"
@@ -1373,11 +1443,17 @@
   "u4bHcR": {
     "defaultMessage": "Check out the code here: {link}"
   },
+  "uKqSN+": {
+    "defaultMessage": "Follows Feed"
+  },
   "uSV4Ti": {
     "defaultMessage": "Reposts need to be manually confirmed"
   },
   "uc0din": {
     "defaultMessage": "Send sats splits to"
+  },
+  "ugyJnE": {
+    "defaultMessage": "Sending notes and other stuff"
   },
   "usAvMr": {
     "defaultMessage": "Edit Profile"
@@ -1387,6 +1463,9 @@
   },
   "v8lolG": {
     "defaultMessage": "Start chat"
+  },
+  "vB3oQ/": {
+    "defaultMessage": "Must be a contact list or pubkey list"
   },
   "vOKedj": {
     "defaultMessage": "{n,plural,=1{& {n} other} other{& {n} others}}"
@@ -1420,9 +1499,6 @@
     "defaultMessage": "Anon",
     "description": "Anonymous Zap"
   },
-  "wYSD2L": {
-    "defaultMessage": "Nostr Adddress"
-  },
   "wih7iJ": {
     "defaultMessage": "name is blocked"
   },
@@ -1434,6 +1510,9 @@
   },
   "wtLjP6": {
     "defaultMessage": "Copy ID"
+  },
+  "wuMvI5": {
+    "defaultMessage": "{site_name} Developers"
   },
   "x/Fx2P": {
     "defaultMessage": "Fund the services that you use by splitting a portion of all your zaps into a pool of funds!"
@@ -1500,6 +1579,9 @@
   "zjJZBd": {
     "defaultMessage": "You're ready!"
   },
+  "zm6qS1": {
+    "defaultMessage": "{n} mins to read"
+  },
   "zonsdq": {
     "defaultMessage": "Failed to load LNURL service"
   },
@@ -1508,5 +1590,8 @@
   },
   "zwb6LR": {
     "defaultMessage": "<b>Mint:</b> {url}"
+  },
+  "zxvhnE": {
+    "defaultMessage": "Daily"
   }
 }

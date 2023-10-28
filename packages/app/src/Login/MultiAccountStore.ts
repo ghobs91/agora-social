@@ -53,6 +53,7 @@ const LoggedOut = {
     timestamp: 0,
   },
   extraChats: [],
+  stalker: false,
 } as LoginSession;
 
 export class MultiAccountStore extends ExternalStore<LoginSession> {
@@ -73,11 +74,12 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     if (!this.#activeAccount) {
       this.#activeAccount = this.#accounts.keys().next().value;
     }
-    // reset readonly on load
     for (const [, v] of this.#accounts) {
+      // reset readonly on load
       if (v.type === LoginSessionType.PrivateKey && v.readonly) {
         v.readonly = false;
       }
+      // fill possibly undefined (migrate up)
       v.appData ??= {
         item: {
           mutedWords: [],
@@ -85,6 +87,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
         timestamp: 0,
       };
       v.extraChats ??= [];
+      v.preferences.checkSigs ??= false;
       if (v.privateKeyData) {
         v.privateKeyData = KeyStorage.fromPayload(v.privateKeyData as object);
       }
@@ -125,6 +128,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     relays?: Record<string, RelaySettings>,
     remoteSignerRelays?: Array<string>,
     privateKey?: KeyStorage,
+    stalker?: boolean,
   ) {
     if (this.#accounts.has(key)) {
       throw new Error("Already logged in with this pubkey");
@@ -143,6 +147,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
       preferences: deepClone(DefaultPreferences),
       remoteSignerRelays,
       privateKeyData: privateKey,
+      stalker: stalker ?? false,
     } as LoginSession;
 
     const pub = createPublisher(newSession);
