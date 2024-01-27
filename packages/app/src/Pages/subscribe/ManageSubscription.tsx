@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { Link, useNavigate } from "react-router-dom";
 
-import PageSpinner from "Element/PageSpinner";
-import useEventPublisher from "Hooks/useEventPublisher";
-import SnortApi, { Subscription, SubscriptionError } from "External/SnortApi";
-import { mapSubscriptionErrorCode } from ".";
+import { ErrorOrOffline } from "@/Components/ErrorOrOffline";
+import PageSpinner from "@/Components/PageSpinner";
+import SnortApi, { Subscription, SubscriptionError } from "@/External/SnortApi";
+import useEventPublisher from "@/Hooks/useEventPublisher";
+import { mapSubscriptionErrorCode } from "@/Pages/subscribe/utils";
+
 import SubscriptionCard from "./SubscriptionCard";
 
 export default function ManageSubscriptionPage() {
@@ -14,52 +16,57 @@ export default function ManageSubscriptionPage() {
   const navigate = useNavigate();
 
   const [subs, setSubs] = useState<Array<Subscription>>();
-  const [error, setError] = useState<SubscriptionError>();
+  const [error, setError] = useState<Error>();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await api.listSubscriptions();
-        setSubs(s);
-      } catch (e) {
-        if (e instanceof SubscriptionError) {
-          setError(e);
-        }
+  async function loadSubs() {
+    setError(undefined);
+    try {
+      const s = await api.listSubscriptions();
+      setSubs(s);
+    } catch (e) {
+      if (e instanceof Error) {
+        setError(e);
       }
-    })();
+    }
+  }
+  useEffect(() => {
+    loadSubs();
   }, []);
 
+  if (!(error instanceof SubscriptionError) && error instanceof Error)
+    return <ErrorOrOffline error={error} onRetry={loadSubs} className="main-content p" />;
   if (subs === undefined) {
     return <PageSpinner />;
   }
   return (
     <div className="main-content p flex flex-col g16">
       <h2>
-        <FormattedMessage defaultMessage="Subscriptions" />
+        <FormattedMessage defaultMessage="Subscriptions" id="J+dIsA" />
       </h2>
       {subs.map(a => (
         <SubscriptionCard sub={a} key={a.id} />
       ))}
       {subs.length !== 0 && (
         <button className="primary" onClick={() => navigate("/subscribe")}>
-          <FormattedMessage defaultMessage="Buy Subscription" />
+          <FormattedMessage defaultMessage="Buy Subscription" id="SP0+yi" />
         </button>
       )}
       {subs.length === 0 && (
         <p>
           <FormattedMessage
             defaultMessage="It looks like you dont have any subscriptions, you can get one {link}"
+            id="W1yoZY"
             values={{
               link: (
                 <Link to="/subscribe">
-                  <FormattedMessage defaultMessage="here" />
+                  <FormattedMessage defaultMessage="here" id="hniz8Z" />
                 </Link>
               ),
             }}
           />
         </p>
       )}
-      {error && <b className="error">{mapSubscriptionErrorCode(error)}</b>}
+      {error instanceof SubscriptionError && <b className="error">{mapSubscriptionErrorCode(error)}</b>}
     </div>
   );
 }

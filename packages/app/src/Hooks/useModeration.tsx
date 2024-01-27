@@ -1,8 +1,9 @@
-import { HexKey, TaggedNostrEvent } from "@snort/system";
-import useEventPublisher from "Hooks/useEventPublisher";
-import useLogin from "Hooks/useLogin";
-import { setBlocked, setMuted } from "Login";
-import { appendDedupe } from "SnortUtils";
+import { HexKey, NostrEvent, TaggedNostrEvent } from "@snort/system";
+
+import useEventPublisher from "@/Hooks/useEventPublisher";
+import useLogin from "@/Hooks/useLogin";
+import { appendDedupe } from "@/Utils";
+import { setBlocked, setMuted } from "@/Utils/Login";
 
 export default function useModeration() {
   const login = useLogin();
@@ -60,7 +61,7 @@ export default function useModeration() {
     return appData.item.mutedWords.includes(word.toLowerCase());
   }
 
-  function isEventMuted(ev: TaggedNostrEvent) {
+  function isEventMuted(ev: TaggedNostrEvent | NostrEvent) {
     return isMuted(ev.pubkey) || appData.item.mutedWords.some(w => ev.content.toLowerCase().includes(w));
   }
 

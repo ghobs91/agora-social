@@ -1,4 +1,5 @@
 /// <reference types="@webbtc/webln-types" />
+/// <reference types="vite/client" />
 
 declare module "*.jpg" {
   const value: unknown;
@@ -30,6 +31,11 @@ declare module "translations/*.json" {
   export default value;
 }
 
+declare module "*.md" {
+  const value: string;
+  export default value;
+}
+
 declare module "emojilib" {
   const value: Record<string, string>;
   export default value;
@@ -41,17 +47,66 @@ declare const CONFIG: {
   appTitle: string;
   hostname: string;
   nip05Domain: string;
-  favicon: string;
-  appleTouchIconUrl: string;
+  icon: string;
+  navLogo: string | null;
   httpCache: string;
   animalNamePlaceholders: boolean;
-  defaultZapPoolFee?: number;
+  defaultZapPoolFee: number;
   features: {
     analytics: boolean;
     subscriptions: boolean;
     deck: boolean;
     zapPool: boolean;
+    notificationGraph: boolean;
+    communityLeaders: boolean;
+    nostrAddress: boolean;
+    pushNotifications: boolean;
   };
+  defaultPreferences: {
+    hideMutedNotes: boolean;
+  };
+  signUp: {
+    moderation: boolean;
+    defaultFollows: Array<string>;
+  };
+  media: {
+    bypassImgProxyError: boolean;
+    preferLargeMedia: boolean;
+  };
+  communityLeaders?: {
+    list: string;
+  };
+
+  // Filter urls from nav sidebar
+  hideFromNavbar: Array<string>;
+
+  // Limit deck to certain subscriber tier
+  deckSubKind?: number;
+
+  showDeck?: boolean;
+
+  // Create toast notifications when publishing notes
+  noteCreatorToast: boolean;
+
   eventLinkPrefix: NostrPrefix;
   profileLinkPrefix: NostrPrefix;
+  defaultRelays: Record<string, RelaySettings>;
+  showPowIcon: boolean;
+
+  // Alby wallet oAuth config
+  alby?: {
+    clientId: string;
+    clientSecret: string;
+  };
+
+  // public chat channels for site
+  chatChannels?: Array<{
+    type: "nip28" | "telegram";
+    value: string;
+  }>;
 };
+
+/**
+ * Build git hash
+ */
+declare const __SNORT_VERSION__: string;

@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { Link, useNavigate } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 
-import AsyncButton from "Element/AsyncButton";
-import { unwrap } from "SnortUtils";
-import { WalletConfig, WalletKind, Wallets } from "Wallet";
-import { Link, useNavigate } from "react-router-dom";
-import { NostrConnectWallet } from "Wallet/NostrWalletConnect";
+import AsyncButton from "@/Components/Button/AsyncButton";
+import { unwrap } from "@/Utils";
+import { WalletConfig, WalletKind, Wallets } from "@/Wallet";
+import { NostrConnectWallet } from "@/Wallet/NostrWalletConnect";
 
 const ConnectNostrWallet = () => {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ const ConnectNostrWallet = () => {
 
   async function tryConnect(config: string) {
     try {
-      const connection = new NostrConnectWallet(config);
+      const connection = new NostrConnectWallet(config, () => {});
       await connection.login();
       const info = await connection.getInfo();
 
@@ -37,6 +37,7 @@ const ConnectNostrWallet = () => {
         setError(
           formatMessage({
             defaultMessage: "Unknown error",
+            id: "qDwvZ4",
           }),
         );
       }
@@ -46,7 +47,7 @@ const ConnectNostrWallet = () => {
   return (
     <>
       <h4>
-        <FormattedMessage defaultMessage="Enter Nostr Wallet Connect config" />
+        <FormattedMessage defaultMessage="Enter Nostr Wallet Connect config" id="1R43+L" />
       </h4>
       <div className="flex">
         <div className="grow mr10">
@@ -59,13 +60,14 @@ const ConnectNostrWallet = () => {
           />
         </div>
         <AsyncButton onClick={() => tryConnect(unwrap(config))} disabled={!config}>
-          <FormattedMessage defaultMessage="Connect" />
+          <FormattedMessage defaultMessage="Connect" id="+vVZ/G" />
         </AsyncButton>
       </div>
       {error && <b className="error p10">{error}</b>}
       <p>
         <FormattedMessage
           defaultMessage="Using Alby? Go to {link} to get your NWC config!"
+          id="cFbU1B"
           values={{
             link: (
               <Link to="https://nwc.getalby.com/" target="_blank">

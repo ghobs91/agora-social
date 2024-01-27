@@ -1,6 +1,7 @@
 import debug from "debug";
-import { removeUndefined, unixNowMs, unwrap } from "./utils";
+import { removeUndefined, unixNowMs } from "./utils";
 import { DexieTableLike } from "./dexie-like";
+import EventEmitter from "eventemitter3";
 
 type HookFn = () => void;
 
@@ -9,14 +10,45 @@ export interface KeyedHookFilter {
   fn: HookFn;
 }
 
+export interface CacheEvents {
+  change: (keys: Array<string>) => void;
+}
+
+export type CachedTable<T> = {
+  preload(): Promise<void>;
+  keysOnTable(): Array<string>;
+  getFromCache(key?: string): T | undefined;
+  get(key?: string): Promise<T | undefined>;
+  bulkGet(keys: Array<string>): Promise<Array<T>>;
+  set(obj: T): Promise<void>;
+  bulkSet(obj: Array<T> | Readonly<Array<T>>): Promise<void>;
+
+  /**
+   * Try to update an entry where created values exists
+   * @param m Profile metadata
+   * @returns
+   */
+  update<TWithCreated extends T & { created: number; loaded: number }>(
+    m: TWithCreated,
+  ): Promise<"new" | "refresh" | "updated" | "no_change">;
+
+  /**
+   * Loads a list of rows from disk cache
+   * @param keys List of ids to load
+   * @returns Keys that do not exist on disk cache
+   */
+  buffer(keys: Array<string>): Promise<Array<string>>;
+  key(of: T): string;
+  snapshot(): Array<T>;
+} & EventEmitter<CacheEvents>;
+
 /**
  * Dexie backed generic hookable store
  */
-export abstract class FeedCache<TCached> {
-  #name: string;
-  #hooks: Array<KeyedHookFilter> = [];
+export abstract class FeedCache<TCached> extends EventEmitter<CacheEvents> implements CachedTable<TCached> {
+  readonly name: string;
   #snapshot: Array<TCached> = [];
-  #changed = true;
+  protected log: ReturnType<typeof debug>;
   #hits = 0;
   #miss = 0;
   protected table?: DexieTableLike<TCached>;
@@ -24,49 +56,44 @@ export abstract class FeedCache<TCached> {
   protected cache: Map<string, TCached> = new Map();
 
   constructor(name: string, table?: DexieTableLike<TCached>) {
-    this.#name = name;
+    super();
+    this.name = name;
     this.table = table;
+    this.log = debug(name);
     setInterval(() => {
-      debug(this.#name)(
+      this.log(
         "%d loaded, %d on-disk, %d hooks, %d% hit",
         this.cache.size,
         this.onTable.size,
-        this.#hooks.length,
+        this.listenerCount("change"),
         ((this.#hits / (this.#hits + this.#miss)) * 100).toFixed(1),
       );
     }, 30_000);
-  }
-
-  get name() {
-    return this.#name;
+    this.on("change", () => {
+      this.#snapshot = this.takeSnapshot();
+    });
   }
 
   async preload() {
-    const keys = (await this.table?.toCollection().primaryKeys()) ?? [];
-    this.onTable = new Set<string>(keys.map(a => a as string));
+    // assume already preloaded if keys exist on table in memory
+    if (this.onTable.size === 0) {
+      const keys = (await this.table?.toCollection().primaryKeys()) ?? [];
+      this.onTable = new Set<string>(keys.map(a => a as string));
+    }
+  }
+
+  hook(fn: HookFn, key: string | undefined) {
+    const handle = (keys: Array<string>) => {
+      if (!key || keys.includes(key)) {
+        fn();
+      }
+    };
+    this.on("change", handle);
+    return () => this.off("change", handle);
   }
 
   keysOnTable() {
     return [...this.onTable];
-  }
-
-  hook(fn: HookFn, key: string | undefined) {
-    if (!key) {
-      return () => {
-        //noop
-      };
-    }
-
-    this.#hooks.push({
-      key,
-      fn,
-    });
-    return () => {
-      const idx = this.#hooks.findIndex(a => a.fn === fn);
-      if (idx >= 0) {
-        this.#hooks.splice(idx, 1);
-      }
-    };
   }
 
   getFromCache(key?: string) {
@@ -86,7 +113,7 @@ export abstract class FeedCache<TCached> {
       const cached = await this.table.get(key);
       if (cached) {
         this.cache.set(this.key(cached), cached);
-        this.notifyChange([key]);
+        this.emit("change", [key]);
         return cached;
       }
     }
@@ -117,7 +144,7 @@ export abstract class FeedCache<TCached> {
         console.error(e);
       }
     }
-    this.notifyChange([k]);
+    this.emit("change", [k]);
   }
 
   async bulkSet(obj: Array<TCached> | Readonly<Array<TCached>>) {
@@ -130,14 +157,12 @@ export abstract class FeedCache<TCached> {
       }
     }
     obj.forEach(v => this.cache.set(this.key(v), v));
-    this.notifyChange(obj.map(a => this.key(a)));
+    this.emit(
+      "change",
+      obj.map(a => this.key(a)),
+    );
   }
 
-  /**
-   * Try to update an entry where created values exists
-   * @param m Profile metadata
-   * @returns
-   */
   async update<TCachedWithCreated extends TCached & { created: number; loaded: number }>(m: TCachedWithCreated) {
     const k = this.key(m);
     const existing = this.getFromCache(k) as TCachedWithCreated;
@@ -153,7 +178,7 @@ export abstract class FeedCache<TCached> {
       }
       return "no_change";
     })();
-    debug(this.#name)("Updating %s %s %o", k, updateType, m);
+    this.log("Updating %s %s %o", k, updateType, m);
     if (updateType !== "no_change") {
       const updated = {
         ...existing,
@@ -164,11 +189,6 @@ export abstract class FeedCache<TCached> {
     return updateType;
   }
 
-  /**
-   * Loads a list of rows from disk cache
-   * @param keys List of ids to load
-   * @returns Keys that do not exist on disk cache
-   */
   async buffer(keys: Array<string>): Promise<Array<string>> {
     const needsBuffer = keys.filter(a => !this.cache.has(a));
     if (this.table && needsBuffer.length > 0) {
@@ -181,8 +201,11 @@ export abstract class FeedCache<TCached> {
       fromCache.forEach(a => {
         this.cache.set(this.key(a), a);
       });
-      this.notifyChange(fromCache.map(a => this.key(a)));
-      debug(this.#name)(`Loaded %d/%d in %d ms`, fromCache.length, keys.length, (unixNowMs() - start).toLocaleString());
+      this.emit(
+        "change",
+        fromCache.map(a => this.key(a)),
+      );
+      this.log(`Loaded %d/%d in %d ms`, fromCache.length, keys.length, (unixNowMs() - start).toLocaleString());
       return mapped.filter(a => !a.has).map(a => a.key);
     }
 
@@ -194,21 +217,10 @@ export abstract class FeedCache<TCached> {
     await this.table?.clear();
     this.cache.clear();
     this.onTable.clear();
-    this.#changed = true;
-    this.#hooks.forEach(h => h.fn());
   }
 
   snapshot() {
-    if (this.#changed) {
-      this.#snapshot = this.takeSnapshot();
-      this.#changed = false;
-    }
     return this.#snapshot;
-  }
-
-  protected notifyChange(keys: Array<string>) {
-    this.#changed = true;
-    this.#hooks.filter(a => keys.includes(a.key) || a.key === "*").forEach(h => h.fn());
   }
 
   abstract key(of: TCached): string;

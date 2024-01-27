@@ -1,6 +1,6 @@
 import { equalProp } from "@snort/shared";
 import { FlatReqFilter } from "./query-optimizer";
-import { NostrEvent, ReqFilter } from "./nostr";
+import { IMeta, NostrEvent, ReqFilter } from "./nostr";
 
 export function findTag(e: NostrEvent, tag: string) {
   const maybeTag = e.tags.find(evTag => {
@@ -46,7 +46,14 @@ export function flatFilterEq(a: FlatReqFilter, b: FlatReqFilter): boolean {
 
 export function splitByUrl(str: string) {
   const urlRegex =
-    /((?:http|ftp|https|nostr|web\+nostr|magnet):\/?\/?(?:[\w+?.\w+])+(?:[\p{L}\p{N}~!@#$%^&*()_\-=+\\/?.:;',]*)?(?:[-a-z0-9+&@#/%=~()_|]))/iu;
+    /((?:http|ftp|https|nostr|web\+nostr|magnet|lnurl[p|w]?):\/?\/?(?:[\w+?.\w+])+(?:[\p{L}\p{N}~!@#$%^&*()_\-=+\\/?.:;',]*)?(?:[-a-z0-9+&@#/%=~()_|]))/iu;
 
   return str.split(urlRegex);
+}
+
+export function getHex64(json: string, field: string): string {
+  let len = field.length + 3;
+  let idx = json.indexOf(`"${field}":`) + len;
+  let s = json.slice(idx).indexOf(`"`) + idx + 1;
+  return json.slice(s, s + 64);
 }

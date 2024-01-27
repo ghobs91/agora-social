@@ -1,170 +1,97 @@
 import "./index.css";
 import "@szhsin/react-menu/dist/index.css";
-import "./fonts/inter.css";
+import "@/assets/fonts/inter.css";
 
-import { compress, expand_filter, flat_merge, get_diff, pow, default as wasmInit } from "@snort/system-wasm";
-import WasmPath from "@snort/system-wasm/pkg/system_wasm_bg.wasm";
-
+import { socialGraphInstance } from "@snort/system";
+import { SnortContext } from "@snort/system-react";
 import { StrictMode } from "react";
 import * as ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouteObject, RouterProvider } from "react-router-dom";
-import {
-  NostrSystem,
-  ProfileLoaderService,
-  QueryOptimizer,
-  FlatReqFilter,
-  ReqFilter,
-  PowMiner,
-  NostrEvent,
-  mapEventToProfile,
-  PowWorker,
-} from "@snort/system";
-import { SnortContext } from "@snort/system-react";
-import { removeUndefined } from "@snort/shared";
 
-import * as serviceWorkerRegistration from "serviceWorkerRegistration";
-import { IntlProvider } from "IntlProvider";
-import { unwrap } from "SnortUtils";
-import Layout from "Pages/Layout";
-import LoginPage from "Pages/LoginPage";
-import ProfilePage from "Pages/Profile/ProfilePage";
-import { RootRoutes, RootTabRoutes } from "Pages/Root";
-import NotificationsPage from "Pages/Notifications";
-import SettingsPage, { SettingsRoutes } from "Pages/SettingsPage";
-import ErrorPage from "Pages/ErrorPage";
-import NostrAddressPage from "Pages/NostrAddressPage";
-import MessagesPage from "Pages/MessagesPage";
-import DonatePage from "Pages/DonatePage";
-import SearchPage from "Pages/SearchPage";
-import HelpPage from "Pages/HelpPage";
-import { NewUserRoutes } from "Pages/new";
-import { WalletRoutes } from "Pages/WalletPage";
-import NostrLinkHandler from "Pages/NostrLinkHandler";
-import { ThreadRoute } from "Element/Event/Thread";
-import { SubscribeRoutes } from "Pages/subscribe";
-import ZapPoolPage from "Pages/ZapPool";
-import { db } from "Db";
-import { preload, RelayMetrics, SystemDb, UserCache, UserRelays } from "Cache";
-import { LoginStore } from "Login";
-import { SnortDeckLayout } from "Pages/DeckLayout";
-import FreeNostrAddressPage from "./Pages/FreeNostrAddressPage";
-import { ListFeedPage } from "Pages/ListFeedPage";
-
-const WasmQueryOptimizer = {
-  expandFilter: (f: ReqFilter) => {
-    return expand_filter(f) as Array<FlatReqFilter>;
-  },
-  getDiff: (prev: Array<ReqFilter>, next: Array<ReqFilter>) => {
-    return get_diff(prev, next) as Array<FlatReqFilter>;
-  },
-  flatMerge: (all: Array<FlatReqFilter>) => {
-    return flat_merge(all) as Array<ReqFilter>;
-  },
-  compress: (all: Array<ReqFilter>) => {
-    return compress(all) as Array<ReqFilter>;
-  },
-} as QueryOptimizer;
-
-export class WasmPowWorker implements PowMiner {
-  minePow(ev: NostrEvent, target: number): Promise<NostrEvent> {
-    const res = pow(ev, target);
-    return Promise.resolve(res);
-  }
-}
-
-const hasWasm = "WebAssembly" in globalThis;
-const DefaultPowWorker = hasWasm ? undefined : new PowWorker("/pow.js");
-export const GetPowWorker = () => (hasWasm ? new WasmPowWorker() : unwrap(DefaultPowWorker));
-
-/**
- * Singleton nostr system
- */
-const System = new NostrSystem({
-  relayCache: UserRelays,
-  profileCache: UserCache,
-  relayMetrics: RelayMetrics,
-  queryOptimizer: hasWasm ? WasmQueryOptimizer : undefined,
-  db: SystemDb,
-  authHandler: async (c, r) => {
-    const { id } = LoginStore.snapshot();
-    const pub = LoginStore.getPublisher(id);
-    if (pub) {
-      return await pub.nip42Auth(c, r);
-    }
-  },
-});
-
-async function fetchProfile(key: string) {
-  try {
-    const rsp = await fetch(`${CONFIG.httpCache}/profile/${key}`);
-    if (rsp.ok) {
-      const data = (await rsp.json()) as NostrEvent;
-      if (data) {
-        return mapEventToProfile(data);
-      }
-    }
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-/**
- * Add profile loader fn
- */
-if (CONFIG.httpCache) {
-  System.ProfileLoader.loaderFn = async (keys: Array<string>) => {
-    return removeUndefined(await Promise.all(keys.map(a => fetchProfile(a))));
-  };
-}
-
-/**
- * Singleton user profile loader
- */
-export const ProfileLoader = new ProfileLoaderService(System, UserCache);
-
-serviceWorkerRegistration.register();
+import { initRelayWorker, preload, Relay, UserCache } from "@/Cache";
+import { ThreadRoute } from "@/Components/Event/Thread";
+import { IntlProvider } from "@/Components/IntlProvider/IntlProvider";
+import { db } from "@/Db";
+import { addCachedMetadataToFuzzySearch } from "@/Db/FuzzySearch";
+import { updateRelayConnections } from "@/Hooks/useLoginRelays";
+import { AboutPage } from "@/Pages/About";
+import { SnortDeckLayout } from "@/Pages/DeckLayout";
+import DonatePage from "@/Pages/DonatePage";
+import ErrorPage from "@/Pages/ErrorPage";
+import FreeNostrAddressPage from "@/Pages/FreeNostrAddressPage";
+import HelpPage from "@/Pages/HelpPage";
+import Layout from "@/Pages/Layout";
+import { ListFeedPage } from "@/Pages/ListFeedPage";
+import MessagesPage from "@/Pages/Messages/MessagesPage";
+import NetworkGraph from "@/Pages/NetworkGraph";
+import NostrAddressPage from "@/Pages/NostrAddressPage";
+import NostrLinkHandler from "@/Pages/NostrLinkHandler";
+import NotificationsPage from "@/Pages/Notifications/Notifications";
+import { OnboardingRoutes } from "@/Pages/onboarding";
+import ProfilePage from "@/Pages/Profile/ProfilePage";
+import { RootRoutes } from "@/Pages/Root/RootRoutes";
+import { RootTabRoutes } from "@/Pages/Root/RootTabRoutes";
+import SearchPage from "@/Pages/SearchPage";
+import SettingsRoutes from "@/Pages/settings/Routes";
+import { SubscribeRoutes } from "@/Pages/subscribe";
+import WalletPage from "@/Pages/wallet";
+import { WalletReceivePage } from "@/Pages/wallet/receive";
+import { WalletSendPage } from "@/Pages/wallet/send";
+import ZapPoolPage from "@/Pages/ZapPool";
+import { System } from "@/system";
+import { storeRefCode, unwrap } from "@/Utils";
+import { LoginStore } from "@/Utils/Login";
+import { hasWasm, wasmInit, WasmPath } from "@/Utils/wasm";
+import { Wallets } from "@/Wallet";
+import { setupWebLNWalletConfig } from "@/Wallet/WebLN";
 
 async function initSite() {
+  storeRefCode();
   if (hasWasm) {
     await wasmInit(WasmPath);
+    await initRelayWorker();
   }
   const login = LoginStore.takeSnapshot();
+  updateRelayConnections(System, login.relays.item).catch(console.error);
+  setupWebLNWalletConfig(Wallets);
+
+  Relay.query([
+    "REQ",
+    "preload-social-graph",
+    {
+      kinds: [3],
+    },
+  ]).then(res => {
+    for (const ev of res) {
+      try {
+        socialGraphInstance.handleEvent(ev);
+      } catch (e) {
+        console.error("Failed to handle contact list event from sql db", e);
+      }
+    }
+  });
+
   db.ready = await db.isAvailable();
   if (db.ready) {
     await preload(login.follows.item);
   }
 
-  for (const [k, v] of Object.entries(login.relays.item)) {
-    System.ConnectToRelay(k, v);
-  }
-  try {
-    if ("registerProtocolHandler" in window.navigator) {
-      window.navigator.registerProtocolHandler("web+nostr", `${window.location.protocol}//${window.location.host}/%s`);
-      console.info("Registered protocol handler for 'web+nostr'");
+  queueMicrotask(() => {
+    for (const ev of UserCache.snapshot()) {
+      try {
+        addCachedMetadataToFuzzySearch(ev);
+      } catch (e) {
+        console.error("Failed to handle metadata event from sql db", e);
+      }
     }
-  } catch (e) {
-    console.error("Failed to register protocol handler", e);
-  }
+  });
 
-  // inject analytics script
-  // <script defer data-domain="snort.social" src="http://analytics.v0l.io/js/script.js"></script>
-  if (CONFIG.features.analytics && (login.preferences.telemetry ?? true)) {
-    const sc = document.createElement("script");
-    sc.src = "https://analytics.v0l.io/js/script.js";
-    sc.defer = true;
-    sc.setAttribute("data-domain", CONFIG.hostname);
-    document.head.appendChild(sc);
-  }
   return null;
 }
 
 let didInit = false;
 const mainRoutes = [
   ...RootRoutes,
-  {
-    path: "/login",
-    element: <LoginPage />,
-  },
   {
     path: "/help",
     element: <HelpPage />,
@@ -180,11 +107,6 @@ const mainRoutes = [
   {
     path: "/notifications",
     element: <NotificationsPage />,
-  },
-  {
-    path: "/settings",
-    element: <SettingsPage />,
-    children: SettingsRoutes,
   },
   {
     path: "/free-nostr-address",
@@ -210,8 +132,32 @@ const mainRoutes = [
     path: "/list-feed/:id",
     element: <ListFeedPage />,
   },
-  ...NewUserRoutes,
-  ...WalletRoutes,
+  {
+    path: "/about",
+    element: <AboutPage />,
+  },
+  {
+    path: "/graph",
+    element: <NetworkGraph />,
+  },
+  {
+    path: "/wallet",
+    element: (
+      <div className="p">
+        <WalletPage showHistory={true} />
+      </div>
+    ),
+  },
+  {
+    path: "/wallet/send",
+    element: <WalletSendPage />,
+  },
+  {
+    path: "/wallet/receive",
+    element: <WalletReceivePage />,
+  },
+  ...OnboardingRoutes,
+  ...SettingsRoutes,
 ] as Array<RouteObject>;
 
 if (CONFIG.features.zapPool) {
@@ -227,7 +173,7 @@ if (CONFIG.features.subscriptions) {
 
 // add catch all route
 mainRoutes.push({
-  path: "/*",
+  path: "/:link",
   element: <NostrLinkHandler />,
 });
 
@@ -261,7 +207,7 @@ if (CONFIG.features.deck) {
   } as RouteObject);
 }
 
-export const router = createBrowserRouter(routes);
+const router = createBrowserRouter(routes);
 
 const root = ReactDOM.createRoot(unwrap(document.getElementById("root")));
 root.render(
@@ -273,3 +219,6 @@ root.render(
     </IntlProvider>
   </StrictMode>,
 );
+
+// Use react-helmet instead?
+document.title = CONFIG.appTitle;

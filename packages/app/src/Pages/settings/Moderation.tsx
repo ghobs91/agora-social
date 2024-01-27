@@ -1,49 +1,72 @@
 import { unixNowMs } from "@snort/shared";
-import useLogin from "Hooks/useLogin";
-import { setAppData } from "Login";
-import { appendDedupe } from "SnortUtils";
 import { useState } from "react";
 import { FormattedMessage } from "react-intl";
 
-export function ModerationSettings() {
+import useLogin from "@/Hooks/useLogin";
+import { appendDedupe } from "@/Utils";
+import { SnortAppData, updateAppData } from "@/Utils/Login";
+
+export default function ModerationSettingsPage() {
   const login = useLogin();
   const [muteWord, setMuteWord] = useState("");
+  const appData = login.appData.item;
 
   function addMutedWord() {
-    login.appData ??= {
+    updateAppData(login.id, ad => ({
       item: {
-        mutedWords: [],
+        ...ad,
+        mutedWords: appendDedupe(appData.mutedWords, [muteWord]),
       },
-      timestamp: 0,
-    };
-    setAppData(
-      login,
-      {
-        ...login.appData.item,
-        mutedWords: appendDedupe(login.appData.item.mutedWords, [muteWord]),
-      },
-      unixNowMs(),
-    );
+      timestamp: unixNowMs(),
+    }));
     setMuteWord("");
   }
 
-  function removeMutedWord(word: string) {
-    setAppData(
-      login,
-      {
-        ...login.appData.item,
-        mutedWords: login.appData.item.mutedWords.filter(a => a !== word),
+  const handleToggle = (setting: keyof SnortAppData) => {
+    updateAppData(login.id, ad => ({
+      item: {
+        ...ad,
+        [setting]: !appData[setting],
       },
-      unixNowMs(),
-    );
+      timestamp: unixNowMs(),
+    }));
+  };
+
+  function removeMutedWord(word: string) {
+    updateAppData(login.id, ad => ({
+      item: {
+        ...ad,
+        mutedWords: appData.mutedWords.filter(a => a !== word),
+      },
+      timestamp: unixNowMs(),
+    }));
     setMuteWord("");
   }
 
   return (
     <>
       <h2>
-        <FormattedMessage defaultMessage="Muted Words" />
+        <FormattedMessage defaultMessage="Moderation" id="wofVHy" />
       </h2>
+
+      <div className="py-4 flex flex-col gap-2">
+        <div className="flex items-center mb-2">
+          <input
+            type="checkbox"
+            checked={appData.showContentWarningPosts}
+            onChange={() => handleToggle("showContentWarningPosts")}
+            className="mr-2"
+            id="showContentWarningPosts"
+          />
+          <label htmlFor="showContentWarningPosts">
+            <FormattedMessage defaultMessage="Show posts that have a content warning tag" id="fQN+tq" />
+          </label>
+        </div>
+      </div>
+
+      <h3>
+        <FormattedMessage defaultMessage="Muted Words" id="AN0Z7Q" />
+      </h3>
       <div className="flex flex-col g12">
         <div className="flex g8">
           <input
@@ -54,14 +77,14 @@ export function ModerationSettings() {
             onChange={e => setMuteWord(e.target.value.toLowerCase())}
           />
           <button type="button" onClick={addMutedWord}>
-            <FormattedMessage defaultMessage="Add" />
+            <FormattedMessage defaultMessage="Add" id="2/2yg+" />
           </button>
         </div>
-        {login.appData.item.mutedWords.map(v => (
-          <div className="p br b flex items-center justify-between">
+        {appData.mutedWords.map(v => (
+          <div key={v} className="p br b flex items-center justify-between">
             <div>{v}</div>
             <button type="button" onClick={() => removeMutedWord(v)}>
-              <FormattedMessage defaultMessage="Delete" />
+              <FormattedMessage defaultMessage="Delete" id="K3r6DQ" />
             </button>
           </div>
         ))}

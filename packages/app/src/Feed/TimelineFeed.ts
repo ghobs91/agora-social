@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { EventKind, NostrLink, NoteCollection, RequestBuilder } from "@snort/system";
-import { useRequestBuilder } from "@snort/system-react";
 import { unixNow } from "@snort/shared";
+import { EventKind, RequestBuilder } from "@snort/system";
+import { useRequestBuilderAdvanced } from "@snort/system-react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 
-import useTimelineWindow from "Hooks/useTimelineWindow";
-import useLogin from "Hooks/useLogin";
-import { SearchRelays } from "Const";
-import { useReactions } from "./Reactions";
+import useLogin from "@/Hooks/useLogin";
+import useModeration from "@/Hooks/useModeration";
+import useTimelineWindow from "@/Hooks/useTimelineWindow";
+import { SearchRelays } from "@/Utils/Const";
 
 export interface TimelineFeedOptions {
   method: "TIME_RANGE" | "LIMIT_UNTIL";
@@ -19,7 +19,7 @@ export interface TimelineSubject {
   discriminator: string;
   items: string[];
   relay?: Array<string>;
-  streams?: boolean;
+  extra?: (rb: RequestBuilder) => void;
 }
 
 export type TimelineFeed = ReturnType<typeof useTimelineFeed>;
@@ -29,7 +29,8 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
     window: options.window,
     now: options.now ?? unixNow(),
   });
-  const pref = useLogin().preferences;
+  const pref = useLogin(s => s.appData.item.preferences);
+  const { isEventMuted } = useModeration();
 
   const createBuilder = useCallback(() => {
     if (subject.type !== "global" && subject.items.length === 0) {
@@ -62,7 +63,7 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
         break;
       }
       case "profile_keyword": {
-        f.search(subject.items[0] + " sort:popular");
+        f.search(subject.items[0]);
         SearchRelays.forEach(r => f.relay(r));
         break;
       }
@@ -72,84 +73,71 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
         break;
       }
     }
-    if (subject.streams && subject.type === "pubkey") {
-      b.withFilter()
-        .kinds([EventKind.LiveEvent])
-        .authors(subject.items)
-        .since(now - 60 * 60 * 24);
-      b.withFilter().kinds([EventKind.LiveEvent]).tag("p", subject.items);
-    }
-    return {
-      builder: b,
-      filter: f,
-    };
-  }, [subject.type, subject.items, subject.discriminator]);
+    subject.extra?.(b);
+    return b;
+  }, [subject.type, subject.items, subject.discriminator, subject.extra]);
 
   const sub = useMemo(() => {
     const rb = createBuilder();
     if (rb) {
-      if (options.method === "LIMIT_UNTIL") {
-        rb.filter.until(until).limit(100);
-      } else {
-        rb.filter.since(since).until(until);
-        if (since === undefined) {
-          rb.filter.limit(50);
+      for (const filter of rb.filterBuilders) {
+        if (options.method === "LIMIT_UNTIL") {
+          filter.until(until).limit(50);
+        } else {
+          filter.since(since).until(until);
+          if (since === undefined) {
+            filter.limit(50);
+          }
         }
       }
-
-      if (pref.autoShowLatest) {
-        // copy properties of main sub but with limit 0
-        // this will put latest directly into main feed
-        rb.builder
-          .withOptions({
-            leaveOpen: true,
-          })
-          .withFilter()
-          .authors(rb.filter.filter.authors)
-          .kinds(rb.filter.filter.kinds)
-          .tag("p", rb.filter.filter["#p"])
-          .tag("t", rb.filter.filter["#t"])
-          .search(rb.filter.filter.search)
-          .limit(1)
-          .since(now);
-      }
+      return rb;
     }
-    return rb?.builder ?? null;
   }, [until, since, options.method, pref, createBuilder]);
 
-  const main = useRequestBuilder(NoteCollection, sub);
+  const mainQuery = useRequestBuilderAdvanced(sub);
+  const main = useSyncExternalStore(
+    h => {
+      mainQuery?.on("event", h);
+      return () => {
+        mainQuery?.off("event", h);
+      };
+    },
+    () => mainQuery?.snapshot,
+  );
 
   const subRealtime = useMemo(() => {
     const rb = createBuilder();
     if (rb && !pref.autoShowLatest && options.method !== "LIMIT_UNTIL") {
-      rb.builder.withOptions({
+      rb.withOptions({
         leaveOpen: true,
       });
-      rb.builder.id = `${rb.builder.id}:latest`;
-      rb.filter.limit(1).since(now);
+      rb.id = `${rb.id}:latest`;
+      for (const filter of rb.filterBuilders) {
+        filter.limit(1).since(now);
+      }
+      return rb;
     }
-    return rb?.builder ?? null;
   }, [pref.autoShowLatest, createBuilder]);
 
-  const latest = useRequestBuilder(NoteCollection, subRealtime);
-  const reactions = useReactions(`${sub?.id}-reactions`, main.data?.map(a => NostrLink.fromEvent(a)) ?? []);
-
-  useEffect(() => {
-    // clear store if changing relays
-    main.clear();
-    latest.clear();
-  }, [subject.relay]);
+  const latestQuery = useRequestBuilderAdvanced(subRealtime);
+  const latest = useSyncExternalStore(
+    h => {
+      latestQuery?.on("event", h);
+      return () => {
+        latestQuery?.off("event", h);
+      };
+    },
+    () => latestQuery?.snapshot,
+  );
 
   return {
-    main: main.data,
-    related: reactions.data,
-    latest: latest.data,
-    loading: main.loading(),
+    main: main?.filter(a => !isEventMuted(a)),
+    latest: latest?.filter(a => !isEventMuted(a)),
     loadMore: () => {
-      if (main.data) {
+      if (main) {
         console.debug("Timeline load more!");
         if (options.method === "LIMIT_UNTIL") {
-          const oldest = main.data.reduce((acc, v) => (acc = v.created_at < acc ? v.created_at : acc), unixNow());
+          const oldest = main.reduce((acc, v) => (acc = v.created_at < acc ? v.created_at : acc), unixNow());
           setUntil(oldest);
         } else {
           older();
@@ -157,9 +145,9 @@ export default function useTimelineFeed(subject: TimelineSubject, options: Timel
       }
     },
     showLatest: () => {
-      if (latest.data) {
-        main.add(latest.data);
-        latest.clear();
+      if (latest) {
+        mainQuery?.feed.add(latest);
+        latestQuery?.feed.clear();
       }
     },
   };

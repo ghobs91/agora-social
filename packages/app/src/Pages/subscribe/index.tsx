@@ -1,62 +1,19 @@
 import "./index.css";
 
+import classNames from "classnames";
 import { useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { RouteObject } from "react-router-dom";
 
-import { formatShort } from "Number";
-import { LockedFeatures, Plans, SubscriptionType } from "Subscription";
-import ManageSubscriptionPage from "Pages/subscribe/ManageSubscription";
-import AsyncButton from "Element/AsyncButton";
-import useEventPublisher from "Hooks/useEventPublisher";
-import SnortApi, { SubscriptionError, SubscriptionErrorCode } from "External/SnortApi";
-import SendSats from "Element/SendSats";
-import classNames from "classnames";
-
-export function mapPlanName(id: number) {
-  switch (id) {
-    case SubscriptionType.Supporter:
-      return <FormattedMessage defaultMessage="Supporter" />;
-    case SubscriptionType.Premium:
-      return <FormattedMessage defaultMessage="PRO" />;
-  }
-}
-
-export function mapFeatureName(k: LockedFeatures) {
-  switch (k) {
-    case LockedFeatures.MultiAccount:
-      return <FormattedMessage defaultMessage="Multi account support" />;
-    case LockedFeatures.NostrAddress:
-      return <FormattedMessage defaultMessage="Snort nostr address" />;
-    case LockedFeatures.Badge:
-      return <FormattedMessage defaultMessage="Supporter Badge" />;
-    case LockedFeatures.DeepL:
-      return <FormattedMessage defaultMessage="DeepL translations" />;
-    case LockedFeatures.RelayRetention:
-      return <FormattedMessage defaultMessage="Unlimited note retention on Snort relay" />;
-    case LockedFeatures.RelayBackup:
-      return <FormattedMessage defaultMessage="Downloadable backups from Snort relay" />;
-    case LockedFeatures.RelayAccess:
-      return <FormattedMessage defaultMessage="Write access to Snort relay, with 1 year of event retention" />;
-    case LockedFeatures.LNProxy:
-      return <FormattedMessage defaultMessage="LN Address Proxy" />;
-    case LockedFeatures.EmailBridge:
-      return <FormattedMessage defaultMessage="Email <> DM bridge for your Snort nostr address" />;
-  }
-}
-
-export function mapSubscriptionErrorCode(c: SubscriptionError) {
-  switch (c.code) {
-    case SubscriptionErrorCode.InternalError:
-      return <FormattedMessage defaultMessage="Internal error: {msg}" values={{ msg: c.message }} />;
-    case SubscriptionErrorCode.SubscriptionActive:
-      return <FormattedMessage defaultMessage="You subscription is still active, you can't renew yet" />;
-    case SubscriptionErrorCode.Duplicate:
-      return <FormattedMessage defaultMessage="You already have a subscription of this type, please renew or pay" />;
-    default:
-      return c.message;
-  }
-}
+import AsyncButton from "@/Components/Button/AsyncButton";
+import ZapModal from "@/Components/ZapModal/ZapModal";
+import SnortApi, { SubscriptionError } from "@/External/SnortApi";
+import useEventPublisher from "@/Hooks/useEventPublisher";
+import ManageSubscriptionPage from "@/Pages/subscribe/ManageSubscription";
+import { mapFeatureName, mapPlanName, mapSubscriptionErrorCode } from "@/Pages/subscribe/utils";
+import { getRefCode } from "@/Utils";
+import { formatShort } from "@/Utils/Number";
+import { Plans } from "@/Utils/Subscription";
 
 export function SubscribePage() {
   const { publisher } = useEventPublisher();
@@ -67,7 +24,8 @@ export function SubscribePage() {
   async function subscribe(type: number) {
     setError(undefined);
     try {
-      const rsp = await api.createSubscription(type);
+      const ref = getRefCode();
+      const rsp = await api.createSubscription(type, ref);
       setInvoice(rsp.pr);
     } catch (e) {
       if (e instanceof SubscriptionError) {
@@ -82,12 +40,13 @@ export function SubscribePage() {
         {Plans.map(a => {
           const lower = Plans.filter(b => b.id < a.id);
           return (
-            <div className={classNames("p flex flex-col g8", { disabled: a.disabled })}>
+            <div key={a.id} className={classNames("p flex flex-col g8", { disabled: a.disabled })}>
               <div className="grow">
                 <h2>{mapPlanName(a.id)}</h2>
                 <p>
                   <FormattedMessage
                     defaultMessage="Subscribe to {site_name} {plan} for {price} and receive the following rewards"
+                    id="JSx7y9"
                     values={{
                       site_name: CONFIG.appNameCapitalized,
                       plan: mapPlanName(a.id),
@@ -98,12 +57,13 @@ export function SubscribePage() {
                 </p>
                 <ul className="list-disc">
                   {a.unlocks.map(b => (
-                    <li>{mapFeatureName(b)} </li>
+                    <li key={`unlocks-${b}`}>{mapFeatureName(b)} </li>
                   ))}
                   {lower.map(b => (
-                    <li>
+                    <li key={`lower-${b}`}>
                       <FormattedMessage
                         defaultMessage="Everything in {plan}"
+                        id="l+ikU1"
                         values={{
                           plan: mapPlanName(b.id),
                         }}
@@ -115,9 +75,9 @@ export function SubscribePage() {
               <div className="flex justify-center">
                 <AsyncButton className="button" disabled={a.disabled} onClick={() => subscribe(a.id)}>
                   {a.disabled ? (
-                    <FormattedMessage defaultMessage="Coming soon" />
+                    <FormattedMessage defaultMessage="Coming soon" id="e61Jf3" />
                   ) : (
-                    <FormattedMessage defaultMessage="Subscribe" />
+                    <FormattedMessage defaultMessage="Subscribe" id="gczcC5" />
                   )}
                 </AsyncButton>
               </div>
@@ -126,7 +86,7 @@ export function SubscribePage() {
         })}
       </div>
       {error && <b className="error">{mapSubscriptionErrorCode(error)}</b>}
-      <SendSats invoice={invoice} show={invoice !== ""} onClose={() => setInvoice("")} />
+      <ZapModal invoice={invoice} show={invoice !== ""} onClose={() => setInvoice("")} />
     </>
   );
 }

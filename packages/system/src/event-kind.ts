@@ -1,4 +1,4 @@
-enum EventKind {
+const enum EventKind {
   Unknown = -1,
   SetMetadata = 0,
   TextNote = 1,
@@ -24,11 +24,27 @@ enum EventKind {
   Relays = 10002, // NIP-65
   Ephemeral = 20_000,
   Auth = 22242, // NIP-42
-  PubkeyLists = 30000, // NIP-51a
-  NoteLists = 30001, // NIP-51b
-  TagLists = 30002, // NIP-51c
+
+  MuteList = 10_000, // NIP-51
+  PinList = 10_001, // NIP-51
+  BookmarksList = 10_003, // NIP-51
+  CommunitiesList = 10_004, // NIP-51
+  PublicChatsList = 10_005, // NIP-51
+  BlockedRelaysList = 10_006, // NIP-51
+  SearchRelaysList = 10_007, // NIP-51
+  InterestsList = 10_015, // NIP-51
+  EmojisList = 10_030, // NIP-51
+
+  FollowSet = 30_000, // NIP-51
+  RelaySet = 30_002, // NIP-51
+  BookmarkSet = 30_003, // NIP-51
+  CurationSet = 30_004, // NIP-51
+  InterestSet = 30_015, // NIP-15
+  EmojiSet = 30_030, // NIP-51
+
   Badge = 30009, // NIP-58
   ProfileBadges = 30008, // NIP-58
+
   LongFormTextNote = 30023, // NIP-23
   AppData = 30_078, // NIP-78
   LiveEvent = 30311, // NIP-102
@@ -37,7 +53,7 @@ enum EventKind {
   SimpleChatMetadata = 39_000, // NIP-29
   ZapRequest = 9734, // NIP 57
   ZapReceipt = 9735, // NIP 57
-  HttpAuthentication = 27235, // NIP XX - HTTP Authentication
+  HttpAuthentication = 27235, // NIP 98 - HTTP Authentication
 }
 
 export default EventKind;

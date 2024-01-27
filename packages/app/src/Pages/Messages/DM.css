@@ -1,0 +1,7 @@
+.dm-gradient {
+  background: var(--dm-gradient);
+}
+
+.other {
+  background: var(--gray-superdark);
+}

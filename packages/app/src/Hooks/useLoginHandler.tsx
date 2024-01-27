@@ -1,12 +1,11 @@
+import { fetchNip05Pubkey, unwrap } from "@snort/shared";
+import { KeyStorage, Nip46Signer } from "@snort/system";
 import { useIntl } from "react-intl";
-import { Nip46Signer, KeyStorage } from "@snort/system";
 
-import { EmailRegex, MnemonicRegex } from "Const";
-import { LoginSessionType, LoginStore } from "Login";
-import { generateBip39Entropy, entropyToPrivateKey } from "nip6";
-import { getNip05PubKey } from "Pages/LoginPage";
-import { bech32ToHex } from "SnortUtils";
-import { unwrap } from "@snort/shared";
+import { bech32ToHex } from "@/Utils";
+import { EmailRegex, MnemonicRegex } from "@/Utils/Const";
+import { LoginSessionType, LoginStore } from "@/Utils/Login";
+import { entropyToPrivateKey, generateBip39Entropy } from "@/Utils/nip6";
 
 export default function useLoginHandler() {
   const { formatMessage } = useIntl();
@@ -16,6 +15,7 @@ export default function useLoginHandler() {
     const insecureMsg = formatMessage({
       defaultMessage:
         "Can't login with private key on an insecure connection, please use a Nostr key manager extension instead",
+      id: "iXPL0Z",
     });
     // private key logins
     if (key.startsWith("nsec")) {
@@ -50,7 +50,11 @@ export default function useLoginHandler() {
       const hexKey = bech32ToHex(key);
       LoginStore.loginWithPubkey(hexKey, LoginSessionType.PublicKey);
     } else if (key.match(EmailRegex)) {
-      const hexKey = await getNip05PubKey(key);
+      const [name, domain] = key.split("@");
+      const hexKey = await fetchNip05Pubkey(name, domain);
+      if (!hexKey) {
+        throw new Error("Invalid nostr address");
+      }
       LoginStore.loginWithPubkey(hexKey, LoginSessionType.PublicKey);
     } else if (key.startsWith("bunker://")) {
       const nip46 = new Nip46Signer(key);

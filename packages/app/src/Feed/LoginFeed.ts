@@ -1,16 +1,16 @@
-import { useEffect, useMemo } from "react";
-import { TaggedNostrEvent, Lists, EventKind, RequestBuilder, NoteCollection } from "@snort/system";
+import { EventKind, NostrLink, parseRelayTags, RequestBuilder, TaggedNostrEvent } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
+import { usePrevious } from "@uidotdev/usehooks";
+import { useEffect, useMemo } from "react";
 
-import { bech32ToHex, getNewest, getNewestEventTagsByKey, unwrap } from "SnortUtils";
-import { makeNotification, sendNotification } from "Notifications";
-import useEventPublisher from "Hooks/useEventPublisher";
-import { getMutedKeys } from "Feed/MuteList";
-import useModeration from "Hooks/useModeration";
-import useLogin from "Hooks/useLogin";
+import { Nip28ChatSystem } from "@/chat/nip28";
+import useEventPublisher from "@/Hooks/useEventPublisher";
+import useLogin from "@/Hooks/useLogin";
+import { bech32ToHex, debounce, getNewest, getNewestEventTagsByKey, unwrap } from "@/Utils";
+import { SnortPubKey } from "@/Utils/Const";
 import {
-  SnortAppData,
   addSubscription,
+  LoginStore,
   setAppData,
   setBlocked,
   setBookmarked,
@@ -19,30 +19,34 @@ import {
   setPinned,
   setRelays,
   setTags,
-} from "Login";
-import { SnortPubKey } from "Const";
-import { SubscriptionEvent } from "Subscription";
-import useRelaysFeedFollows from "./RelaysFeedFollows";
-import { FollowsFeed, GiftsCache, Notifications, UserRelays } from "Cache";
-import { Nip28Chats, Nip4Chats } from "chat";
-import { useRefreshFeedCache } from "Hooks/useRefreshFeedcache";
-
+  SnortAppData,
+} from "@/Utils/Login";
+import { SubscriptionEvent } from "@/Utils/Subscription";
 /**
  * Managed loading data for the current logged in user
  */
 export default function useLoginFeed() {
   const login = useLogin();
-  const { publicKey: pubKey, readNotifications, follows } = login;
-  const { isMuted } = useModeration();
+  const { publicKey: pubKey, follows } = login;
   const { publisher, system } = useEventPublisher();
 
-  useRefreshFeedCache(Notifications, true);
-  useRefreshFeedCache(FollowsFeed, true);
-  useRefreshFeedCache(GiftsCache, true);
-
   useEffect(() => {
-    system.checkSigs = login.preferences.checkSigs;
+    system.checkSigs = login.appData.item.preferences.checkSigs;
   }, [login]);
+
+  const previous = usePrevious(login.appData.item);
+  // write appdata after 10s of no changes
+  useEffect(() => {
+    if (!previous || JSON.stringify(previous) === JSON.stringify(login.appData.item)) {
+      return;
+    }
+    return debounce(10_000, async () => {
+      if (publisher && login.appData.item) {
+        const ev = await publisher.appData(login.appData.item, "snort");
+        await system.BroadcastEvent(ev);
+      }
+    });
+  }, [previous]);
 
   const subLogin = useMemo(() => {
     if (!login || !pubKey) return null;
@@ -51,7 +55,17 @@ export default function useLoginFeed() {
     b.withOptions({
       leaveOpen: true,
     });
-    b.withFilter().authors([pubKey]).kinds([EventKind.ContactList]);
+    b.withFilter()
+      .authors([pubKey])
+      .kinds([
+        EventKind.ContactList,
+        EventKind.Relays,
+        EventKind.MuteList,
+        EventKind.PinList,
+        EventKind.BookmarksList,
+        EventKind.InterestsList,
+        EventKind.PublicChatsList,
+      ]);
     if (CONFIG.features.subscriptions && !login.readonly) {
       b.withFilter().authors([pubKey]).kinds([EventKind.AppData]).tag("d", ["snort"]);
       b.withFilter()
@@ -61,44 +75,29 @@ export default function useLoginFeed() {
         .tag("p", [pubKey])
         .limit(10);
     }
-    b.withFilter()
-      .authors([pubKey])
-      .kinds([EventKind.PubkeyLists])
-      .tag("d", [Lists.Muted, Lists.Followed, Lists.Pinned, Lists.Bookmarked]);
 
-    const n4Sub = Nip4Chats.subscription(login);
-    if (n4Sub) {
-      b.add(n4Sub);
-    }
-    const n28Sub = Nip28Chats.subscription(login);
-    if (n28Sub) {
-      b.add(n28Sub);
-    }
     return b;
   }, [login]);
 
-  const loginFeed = useRequestBuilder(NoteCollection, subLogin);
+  const loginFeed = useRequestBuilder(subLogin);
 
   // update relays and follow lists
   useEffect(() => {
-    if (loginFeed.data) {
-      const contactList = getNewest(loginFeed.data.filter(a => a.kind === EventKind.ContactList));
+    if (loginFeed) {
+      const contactList = getNewest(loginFeed.filter(a => a.kind === EventKind.ContactList));
       if (contactList) {
-        if (contactList.content !== "" && contactList.content !== "{}") {
-          const relays = JSON.parse(contactList.content);
-          setRelays(login, relays, contactList.created_at * 1000);
-        }
         const pTags = contactList.tags.filter(a => a[0] === "p").map(a => a[1]);
-        setFollows(login, pTags, contactList.created_at * 1000);
-
-        FollowsFeed.backFillIfMissing(system, pTags);
+        setFollows(login.id, pTags, contactList.created_at * 1000);
       }
 
-      Nip4Chats.onEvent(loginFeed.data);
-      Nip28Chats.onEvent(loginFeed.data);
+      const relays = getNewest(loginFeed.filter(a => a.kind === EventKind.Relays));
+      if (relays) {
+        const parsedRelays = parseRelayTags(relays.tags.filter(a => a[0] === "r")).map(a => [a.url, a.settings]);
+        setRelays(login, Object.fromEntries(parsedRelays), relays.created_at * 1000);
+      }
 
       if (publisher) {
-        const subs = loginFeed.data.filter(
+        const subs = loginFeed.filter(
           a => a.kind === EventKind.SnortSubscriptions && a.pubkey === bech32ToHex(SnortPubKey),
         );
         Promise.all(
@@ -114,7 +113,7 @@ export default function useLoginFeed() {
           }),
         ).then(a => addSubscription(login, ...a.filter(a => a !== undefined).map(unwrap)));
 
-        const appData = getNewest(loginFeed.data.filter(a => a.kind === EventKind.AppData));
+        const appData = getNewest(loginFeed.filter(a => a.kind === EventKind.AppData));
         if (appData) {
           publisher.decryptGeneric(appData.content, appData.pubkey).then(d => {
             setAppData(login, JSON.parse(d) as SnortAppData, appData.created_at * 1000);
@@ -124,38 +123,26 @@ export default function useLoginFeed() {
     }
   }, [loginFeed, publisher]);
 
-  // send out notifications
-  useEffect(() => {
-    if (loginFeed.data) {
-      const replies = loginFeed.data.filter(
-        a => a.kind === EventKind.TextNote && !isMuted(a.pubkey) && a.created_at > readNotifications,
-      );
-      replies.forEach(async nx => {
-        const n = await makeNotification(nx);
-        if (n) {
-          sendNotification(login, n);
-        }
-      });
-    }
-  }, [loginFeed, readNotifications]);
+  async function handleMutedFeed(mutedFeed: TaggedNostrEvent[]) {
+    const latest = getNewest(mutedFeed);
+    if (!latest) return;
 
-  function handleMutedFeed(mutedFeed: TaggedNostrEvent[]) {
-    const muted = getMutedKeys(mutedFeed);
-    setMuted(login, muted.keys, muted.createdAt * 1000);
+    const muted = NostrLink.fromTags(latest.tags);
+    setMuted(
+      login,
+      muted.map(a => a.id),
+      latest.created_at * 1000,
+    );
 
-    if (muted.raw && (muted.raw?.content?.length ?? 0) > 0 && pubKey) {
-      publisher
-        ?.nip4Decrypt(muted.raw.content, pubKey)
-        .then(plaintext => {
-          try {
-            const blocked = JSON.parse(plaintext);
-            const keys = blocked.filter((p: string) => p && p.length === 2 && p[0] === "p").map((p: string) => p[1]);
-            setBlocked(login, keys, unwrap(muted.raw).created_at * 1000);
-          } catch (error) {
-            console.debug("Couldn't parse JSON");
-          }
-        })
-        .catch(error => console.warn(error));
+    if (latest?.content && publisher && pubKey) {
+      try {
+        const privMutes = await publisher.nip4Decrypt(latest.content, pubKey);
+        const blocked = JSON.parse(privMutes) as Array<Array<string>>;
+        const keys = blocked.filter(a => a[0] === "p").map(a => a[1]);
+        setBlocked(login, keys, latest.created_at * 1000);
+      } catch (error) {
+        console.debug("Failed to parse mute list", error, latest);
+      }
     }
   }
 
@@ -180,36 +167,36 @@ export default function useLoginFeed() {
     }
   }
 
-  useEffect(() => {
-    if (loginFeed.data) {
-      const getList = (evs: readonly TaggedNostrEvent[], list: Lists) =>
-        evs
-          .filter(
-            a => a.kind === EventKind.TagLists || a.kind === EventKind.NoteLists || a.kind === EventKind.PubkeyLists,
-          )
-          .filter(a => unwrap(a.tags.find(b => b[0] === "d"))[1] === list);
+  function handlePublicChatsListFeed(bookmarkFeed: TaggedNostrEvent[]) {
+    const newest = getNewestEventTagsByKey(bookmarkFeed, "e");
+    if (newest) {
+      LoginStore.updateSession({
+        ...login,
+        extraChats: newest.keys.map(Nip28ChatSystem.chatId),
+      });
+    }
+  }
 
-      const mutedFeed = getList(loginFeed.data, Lists.Muted);
+  useEffect(() => {
+    if (loginFeed) {
+      const mutedFeed = loginFeed.filter(a => a.kind === EventKind.MuteList);
       handleMutedFeed(mutedFeed);
 
-      const pinnedFeed = getList(loginFeed.data, Lists.Pinned);
+      const pinnedFeed = loginFeed.filter(a => a.kind === EventKind.PinList);
       handlePinnedFeed(pinnedFeed);
 
-      const tagsFeed = getList(loginFeed.data, Lists.Followed);
+      const tagsFeed = loginFeed.filter(a => a.kind === EventKind.InterestsList);
       handleTagFeed(tagsFeed);
 
-      const bookmarkFeed = getList(loginFeed.data, Lists.Bookmarked);
+      const bookmarkFeed = loginFeed.filter(a => a.kind === EventKind.BookmarksList);
       handleBookmarkFeed(bookmarkFeed);
+
+      const publicChatsFeed = loginFeed.filter(a => a.kind === EventKind.PublicChatsList);
+      handlePublicChatsListFeed(publicChatsFeed);
     }
   }, [loginFeed]);
 
   useEffect(() => {
-    UserRelays.buffer(follows.item).catch(console.error);
-    system.ProfileLoader.TrackMetadata(follows.item); // always track follows profiles
+    system.profileLoader.TrackKeys(follows.item); // always track follows profiles
   }, [follows.item]);
-
-  const fRelays = useRelaysFeedFollows(follows.item);
-  useEffect(() => {
-    UserRelays.bulkSet(fRelays).catch(console.error);
-  }, [fRelays]);
 }

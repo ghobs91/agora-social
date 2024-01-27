@@ -1,3 +1,5 @@
+import { throwIfOffline } from "@snort/shared";
+
 import {
   InvoiceRequest,
   LNWallet,
@@ -8,7 +10,7 @@ import {
   WalletInfo,
   WalletInvoice,
   WalletInvoiceState,
-} from "Wallet";
+} from "@/Wallet";
 
 const defaultHeaders = {
   Accept: "application/json",
@@ -22,7 +24,10 @@ export default class LNDHubWallet implements LNWallet {
   password: string;
   auth?: AuthResponse;
 
-  constructor(url: string) {
+  constructor(
+    url: string,
+    readonly changed: (data?: object) => void,
+  ) {
     if (url.startsWith("lndhub://")) {
       const regex = /^lndhub:\/\/([\S-]+):([\S-]+)@(.*)$/i;
       const parsedUrl = url.match(regex);
@@ -42,7 +47,23 @@ export default class LNDHubWallet implements LNWallet {
     return this.auth !== undefined;
   }
 
-  canAutoLogin(): boolean {
+  canAutoLogin() {
+    return true;
+  }
+
+  canGetInvoices() {
+    return true;
+  }
+
+  canGetBalance() {
+    return true;
+  }
+
+  canCreateInvoice() {
+    return true;
+  }
+
+  canPayInvoice() {
     return true;
   }
 
@@ -51,25 +72,31 @@ export default class LNDHubWallet implements LNWallet {
   }
 
   async getInfo() {
+    await this.login();
     return await this.getJson<WalletInfo>("GET", "/getinfo");
   }
 
   async login() {
+    if (this.auth) return true;
+
     const rsp = await this.getJson<AuthResponse>("POST", "/auth?type=auth", {
       login: this.user,
       password: this.password,
     });
     this.auth = rsp as AuthResponse;
+    this.changed();
     return true;
   }
 
   async getBalance(): Promise<Sats> {
+    await this.login();
     const rsp = await this.getJson<GetBalanceResponse>("GET", "/balance");
     const bal = Math.floor((rsp as GetBalanceResponse).BTC.AvailableBalance);
     return bal as Sats;
   }
 
   async createInvoice(req: InvoiceRequest) {
+    await this.login();
     const rsp = await this.getJson<UserInvoicesResponse>("POST", "/addinvoice", {
       amt: req.amount,
       memo: req.memo,
@@ -86,6 +113,7 @@ export default class LNDHubWallet implements LNWallet {
   }
 
   async payInvoice(pr: string) {
+    await this.login();
     const rsp = await this.getJson<PayInvoiceResponse>("POST", "/payinvoice", {
       invoice: pr,
     });
@@ -98,28 +126,33 @@ export default class LNDHubWallet implements LNWallet {
       state: pRsp.payment_error
         ? WalletInvoiceState.Failed
         : pRsp.payment_preimage
-        ? WalletInvoiceState.Paid
-        : WalletInvoiceState.Pending,
+          ? WalletInvoiceState.Paid
+          : WalletInvoiceState.Pending,
     } as WalletInvoice;
   }
 
   async getInvoices(): Promise<WalletInvoice[]> {
+    await this.login();
     const rsp = await this.getJson<UserInvoicesResponse[]>("GET", "/getuserinvoices");
-    return (rsp as UserInvoicesResponse[]).map(a => {
-      const decodedInvoice = prToWalletInvoice(a.payment_request);
-      if (!decodedInvoice) {
-        throw new WalletError(WalletErrorCode.InvalidInvoice, "Failed to parse invoice");
-      }
-      return {
-        ...decodedInvoice,
-        state: a.ispaid ? WalletInvoiceState.Paid : decodedInvoice.state,
-        paymentHash: a.payment_hash,
-        memo: a.description,
-      } as WalletInvoice;
-    });
+    return (rsp as UserInvoicesResponse[])
+      .sort((a, b) => (a.timestamp > b.timestamp ? -1 : 1))
+      .slice(0, 50)
+      .map(a => {
+        const decodedInvoice = prToWalletInvoice(a.payment_request);
+        if (!decodedInvoice) {
+          throw new WalletError(WalletErrorCode.InvalidInvoice, "Failed to parse invoice");
+        }
+        return {
+          ...decodedInvoice,
+          state: a.ispaid ? WalletInvoiceState.Paid : decodedInvoice.state,
+          paymentHash: a.payment_hash,
+          memo: a.description,
+        } as WalletInvoice;
+      });
   }
 
   private async getJson<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+    throwIfOffline();
     const auth = `Bearer ${this.auth?.access_token}`;
     const url = `${this.url.pathname === "/" ? this.url.toString().slice(0, -1) : this.url.toString()}${path}`;
     const rsp = await fetch(url, {

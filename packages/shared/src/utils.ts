@@ -144,13 +144,9 @@ export function getPublicKey(privKey: string) {
 }
 
 export function bech32ToHex(str: string) {
-  try {
-    const nKey = bech32.decode(str, 1_000);
-    const buff = bech32.fromWords(nKey.words);
-    return utils.bytesToHex(Uint8Array.from(buff));
-  } catch (e) {
-    return str;
-  }
+  const nKey = bech32.decode(str, 1_000);
+  const buff = bech32.fromWords(nKey.words);
+  return utils.bytesToHex(Uint8Array.from(buff));
 }
 
 /**
@@ -159,13 +155,9 @@ export function bech32ToHex(str: string) {
  * @returns
  */
 export function bech32ToText(str: string) {
-  try {
-    const decoded = bech32.decode(str, 1000);
-    const buf = bech32.fromWords(decoded.words);
-    return new TextDecoder().decode(Uint8Array.from(buf));
-  } catch {
-    return "";
-  }
+  const decoded = bech32.decode(str, 1000);
+  const buf = bech32.fromWords(decoded.words);
+  return new TextDecoder().decode(Uint8Array.from(buf));
 }
 
 export async function fetchNip05Pubkey(name: string, domain: string, timeout = 2_000): Promise<string | undefined> {
@@ -214,4 +206,25 @@ export function normalizeReaction(content: string) {
     default:
       return Reaction.Positive;
   }
+}
+
+export class OfflineError extends Error {}
+
+export function throwIfOffline() {
+  if (isOffline()) {
+    throw new OfflineError("Offline");
+  }
+}
+
+export function isOffline() {
+  return !("navigator" in globalThis && globalThis.navigator.onLine);
+}
+
+export function isHex(s: string) {
+  // 48-57 = 0-9
+  // 65-90 = A-Z
+  // 97-122 = a-z
+  return [...s]
+    .map(v => v.charCodeAt(0))
+    .every(v => (v >= 48 && v <= 57) || (v >= 65 && v <= 90) || v >= 97 || v <= 122);
 }

@@ -1,7 +1,7 @@
 import { FullRelaySettings, HexKey, NostrEvent, UserMetadata } from "..";
 import { hexToBech32, unixNowMs, DexieTableLike } from "@snort/shared";
 
-export interface MetadataCache extends UserMetadata {
+export interface CachedMetadata extends UserMetadata {
   /**
    * When the object was saved in cache
    */
@@ -36,17 +36,21 @@ export interface MetadataCache extends UserMetadata {
 export interface RelayMetrics {
   addr: string;
   events: number;
+  connects: number;
+  lastSeen: number;
   disconnects: number;
   latency: number[];
 }
 
 export interface UsersRelays {
   pubkey: string;
-  created_at: number;
   relays: FullRelaySettings[];
+  created: number;
+  loaded: number;
 }
 
 export function mapEventToProfile(ev: NostrEvent) {
+  if (ev.kind !== 0) return;
   try {
     const data: UserMetadata = JSON.parse(ev.content);
     let ret = {
@@ -55,7 +59,7 @@ export function mapEventToProfile(ev: NostrEvent) {
       npub: hexToBech32("npub", ev.pubkey),
       created: ev.created_at,
       loaded: unixNowMs(),
-    } as MetadataCache;
+    } as CachedMetadata;
 
     // sanitize non-string/number
     for (const [k, v] of Object.entries(ret)) {
@@ -70,7 +74,7 @@ export function mapEventToProfile(ev: NostrEvent) {
 }
 
 export interface SnortSystemDb {
-  users: DexieTableLike<MetadataCache>;
+  users: DexieTableLike<CachedMetadata>;
   relayMetrics: DexieTableLike<RelayMetrics>;
   userRelays: DexieTableLike<UsersRelays>;
   events: DexieTableLike<NostrEvent>;

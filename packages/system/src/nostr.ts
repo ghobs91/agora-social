@@ -14,7 +14,12 @@ export interface TaggedNostrEvent extends NostrEvent {
   /**
    * A list of relays this event was seen on
    */
-  relays: string[];
+  relays: Array<string>;
+
+  /**
+   * Additional context
+   */
+  context?: object;
 }
 
 /**
@@ -52,7 +57,8 @@ export interface ReqFilter {
   since?: number;
   until?: number;
   limit?: number;
-  [key: string]: Array<string> | Array<number> | string | number | undefined;
+  ids_only?: boolean;
+  [key: string]: Array<string> | Array<number> | string | number | undefined | boolean;
 }
 
 /**
@@ -70,20 +76,27 @@ export type UserMetadata = {
   lud16?: string;
 };
 
-/**
- * NIP-51 list types
- */
-export enum Lists {
-  Muted = "mute",
-  Pinned = "pin",
-  Bookmarked = "bookmark",
-  Followed = "follow",
-  Badges = "profile_badges",
-}
-
 export interface FullRelaySettings {
   url: string;
   settings: RelaySettings;
 }
 
 export type NotSignedNostrEvent = Omit<NostrEvent, "sig">;
+
+export interface IMeta {
+  magnet?: string;
+  sha256?: string;
+  blurHash?: string;
+  height?: number;
+  width?: number;
+  alt?: string;
+  fallback?: Array<string>;
+}
+
+export interface OkResponse {
+  ok: boolean;
+  id: string;
+  relay: string;
+  message?: string;
+  event: NostrEvent;
+}

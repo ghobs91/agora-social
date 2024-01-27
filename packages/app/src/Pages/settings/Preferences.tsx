@@ -1,41 +1,20 @@
 import "./Preferences.css";
 
 import { FormattedMessage, useIntl } from "react-intl";
-import useLogin from "Hooks/useLogin";
-import { DefaultPreferences, updatePreferences, UserPreferences } from "Login";
-import { DefaultImgProxy } from "Const";
-import { unwrap } from "SnortUtils";
+
+import { AllLanguageCodes } from "@/Components/IntlProvider/IntlProviderUtils";
+import { useLocale } from "@/Components/IntlProvider/useLocale";
+import useLogin from "@/Hooks/useLogin";
+import { unwrap } from "@/Utils";
+import { DefaultImgProxy } from "@/Utils/Const";
+import { updatePreferences, UserPreferences } from "@/Utils/Login";
 
 import messages from "./messages";
 
-export const AllLanguageCodes = [
-  "en",
-  "ja",
-  "es",
-  "hu",
-  "zh-CN",
-  "zh-TW",
-  "fr",
-  "ar",
-  "it",
-  "id",
-  "de",
-  "ru",
-  "sv",
-  "hr",
-  "ta-IN",
-  "fa-IR",
-  "th",
-  "pt-BR",
-  "sw",
-  "nl",
-  "fi",
-];
-
 const PreferencesPage = () => {
   const { formatMessage } = useIntl();
-  const login = useLogin();
-  const perf = login.preferences;
+  const { id, pref } = useLogin(s => ({ id: s.id, pref: s.appData.item.preferences }));
+  const { lang } = useLocale();
 
   return (
     <div className="preferences flex flex-col g24">
@@ -45,20 +24,20 @@ const PreferencesPage = () => {
 
       <div className="flex justify-between w-max">
         <h4>
-          <FormattedMessage defaultMessage="Language" />
+          <FormattedMessage defaultMessage="Language" id="y1Z3or" />
         </h4>
         <div>
           <select
-            value={perf.language || DefaultPreferences.language}
+            value={lang}
             onChange={e =>
-              updatePreferences(login, {
-                ...perf,
+              updatePreferences(id, {
+                ...pref,
                 language: e.target.value,
               })
             }
             style={{ textTransform: "capitalize" }}>
             {AllLanguageCodes.sort().map(a => (
-              <option value={a}>
+              <option key={a} value={a}>
                 {new Intl.DisplayNames([a], {
                   type: "language",
                 }).of(a)}
@@ -73,10 +52,10 @@ const PreferencesPage = () => {
         </h4>
         <div>
           <select
-            value={perf.theme}
+            value={pref.theme}
             onChange={e =>
-              updatePreferences(login, {
-                ...perf,
+              updatePreferences(id, {
+                ...pref,
                 theme: e.target.value,
               } as UserPreferences)
             }>
@@ -98,15 +77,15 @@ const PreferencesPage = () => {
         </h4>
         <div>
           <select
-            value={perf.defaultRootTab}
+            value={pref.defaultRootTab}
             onChange={e =>
-              updatePreferences(login, {
-                ...perf,
+              updatePreferences(id, {
+                ...pref,
                 defaultRootTab: e.target.value,
               } as UserPreferences)
             }>
             <option value="notes">
-              <FormattedMessage defaultMessage="Notes" />
+              <FormattedMessage defaultMessage="Notes" id="7+Domh" />
             </option>
             <option value="conversations">
               <FormattedMessage {...messages.Conversations} />
@@ -120,17 +99,17 @@ const PreferencesPage = () => {
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Send usage metrics" />
+            <FormattedMessage defaultMessage="Send usage metrics" id="XECMfW" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Send anonymous usage metrics" />
+            <FormattedMessage defaultMessage="Send anonymous usage metrics" id="/Xf4UW" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
-            checked={perf.telemetry ?? true}
-            onChange={e => updatePreferences(login, { ...perf, telemetry: e.target.checked })}
+            checked={pref.telemetry ?? true}
+            onChange={e => updatePreferences(id, { ...pref, telemetry: e.target.checked })}
           />
         </div>
       </div>
@@ -145,10 +124,10 @@ const PreferencesPage = () => {
           <div className="w-max">
             <select
               className="w-max"
-              value={perf.autoLoadMedia}
+              value={pref.autoLoadMedia}
               onChange={e =>
-                updatePreferences(login, {
-                  ...perf,
+                updatePreferences(id, {
+                  ...pref,
                   autoLoadMedia: e.target.value,
                 } as UserPreferences)
               }>
@@ -168,99 +147,116 @@ const PreferencesPage = () => {
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Check Signatures" />
+            <FormattedMessage defaultMessage="Check Signatures" id="1o2BgB" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Check all event signatures received from relays" />
+            <FormattedMessage defaultMessage="Check all event signatures received from relays" id="UNjfWJ" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
-            checked={perf.checkSigs}
-            onChange={e => updatePreferences(login, { ...perf, checkSigs: e.target.checked })}
+            checked={pref.checkSigs}
+            onChange={e => updatePreferences(id, { ...pref, checkSigs: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Proof of Work" />
+            <FormattedMessage defaultMessage="Auto Translate" id="IWz1ta" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Amount of work to apply to all published events" />
+            <FormattedMessage defaultMessage="Automatically translate notes to your local language" id="WmZhfL" />
+          </small>
+        </div>
+        <div>
+          <input
+            type="checkbox"
+            checked={pref.autoTranslate}
+            onChange={e => updatePreferences(id, { ...pref, autoTranslate: e.target.checked })}
+          />
+        </div>
+      </div>
+      <div className="flex justify-between w-max">
+        <div className="flex flex-col g8">
+          <h4>
+            <FormattedMessage defaultMessage="Proof of Work" id="grQ+mI" />
+          </h4>
+          <small>
+            <FormattedMessage defaultMessage="Amount of work to apply to all published events" id="vxwnbh" />
           </small>
         </div>
         <div>
           <input
             type="number"
-            defaultValue={perf.pow}
+            defaultValue={pref.pow}
             min={0}
-            onChange={e => updatePreferences(login, { ...perf, pow: parseInt(e.target.value || "0") })}
+            onChange={e => updatePreferences(id, { ...pref, pow: parseInt(e.target.value || "0") })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <h4>
-          <FormattedMessage defaultMessage="Default Zap amount" />
+          <FormattedMessage defaultMessage="Default Zap amount" id="qMx1sA" />
         </h4>
         <div>
           <input
             type="number"
-            defaultValue={perf.defaultZapAmount}
+            defaultValue={pref.defaultZapAmount}
             min={1}
-            onChange={e => updatePreferences(login, { ...perf, defaultZapAmount: parseInt(e.target.value || "0") })}
+            onChange={e => updatePreferences(id, { ...pref, defaultZapAmount: parseInt(e.target.value || "0") })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Show Badges" />
+            <FormattedMessage defaultMessage="Show Badges" id="sKDn4e" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Show badges on profile pages" />
+            <FormattedMessage defaultMessage="Show badges on profile pages" id="EQKRE4" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
-            checked={perf.showBadges ?? false}
-            onChange={e => updatePreferences(login, { ...perf, showBadges: e.target.checked })}
+            checked={pref.showBadges ?? false}
+            onChange={e => updatePreferences(id, { ...pref, showBadges: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Show Status" />
+            <FormattedMessage defaultMessage="Show Status" id="0uoY11" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Show status messages on profile pages" />
+            <FormattedMessage defaultMessage="Show status messages on profile pages" id="FMfjrl" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
-            checked={perf.showStatus ?? true}
-            onChange={e => updatePreferences(login, { ...perf, showStatus: e.target.checked })}
+            checked={pref.showStatus ?? true}
+            onChange={e => updatePreferences(id, { ...pref, showStatus: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Auto Zap" />
+            <FormattedMessage defaultMessage="Auto Zap" id="Dh3hbq" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Automatically zap every note when loaded" />
+            <FormattedMessage defaultMessage="Automatically zap every note when loaded" id="D+KzKd" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
-            checked={perf.autoZap}
-            onChange={e => updatePreferences(login, { ...perf, autoZap: e.target.checked })}
+            checked={pref.autoZap}
+            onChange={e => updatePreferences(id, { ...pref, autoZap: e.target.checked })}
           />
         </div>
       </div>
@@ -277,17 +273,17 @@ const PreferencesPage = () => {
           <div>
             <input
               type="checkbox"
-              checked={perf.imgProxyConfig !== null}
+              checked={pref.imgProxyConfig !== null}
               onChange={e =>
-                updatePreferences(login, {
-                  ...perf,
-                  imgProxyConfig: e.target.checked ? DefaultImgProxy : null,
+                updatePreferences(id, {
+                  ...pref,
+                  imgProxyConfig: e.target.checked ? DefaultImgProxy : undefined,
                 })
               }
             />
           </div>
         </div>
-        {perf.imgProxyConfig && (
+        {pref.imgProxyConfig && (
           <div className="w-max form">
             <div className="form-group">
               <div>
@@ -296,16 +292,17 @@ const PreferencesPage = () => {
               <div className="w-max">
                 <input
                   type="text"
-                  value={perf.imgProxyConfig?.url}
+                  value={pref.imgProxyConfig?.url}
                   placeholder={formatMessage({
                     defaultMessage: "URL..",
+                    id: "cQfLWb",
                     description: "Placeholder text for imgproxy url textbox",
                   })}
                   onChange={e =>
-                    updatePreferences(login, {
-                      ...perf,
+                    updatePreferences(id, {
+                      ...pref,
                       imgProxyConfig: {
-                        ...unwrap(perf.imgProxyConfig),
+                        ...unwrap(pref.imgProxyConfig),
                         url: e.target.value,
                       },
                     })
@@ -320,16 +317,17 @@ const PreferencesPage = () => {
               <div className="w-max">
                 <input
                   type="password"
-                  value={perf.imgProxyConfig?.key}
+                  value={pref.imgProxyConfig?.key}
                   placeholder={formatMessage({
                     defaultMessage: "Hex Key..",
+                    id: "H+vHiz",
                     description: "Hexidecimal 'key' input for improxy",
                   })}
                   onChange={e =>
-                    updatePreferences(login, {
-                      ...perf,
+                    updatePreferences(id, {
+                      ...pref,
                       imgProxyConfig: {
-                        ...unwrap(perf.imgProxyConfig),
+                        ...unwrap(pref.imgProxyConfig),
                         key: e.target.value,
                       },
                     })
@@ -344,16 +342,17 @@ const PreferencesPage = () => {
               <div className="w-max">
                 <input
                   type="password"
-                  value={perf.imgProxyConfig?.salt}
+                  value={pref.imgProxyConfig?.salt}
                   placeholder={formatMessage({
                     defaultMessage: "Hex Salt..",
+                    id: "TpgeGw",
                     description: "Hexidecimal 'salt' input for imgproxy",
                   })}
                   onChange={e =>
-                    updatePreferences(login, {
-                      ...perf,
+                    updatePreferences(id, {
+                      ...pref,
                       imgProxyConfig: {
-                        ...unwrap(perf.imgProxyConfig),
+                        ...unwrap(pref.imgProxyConfig),
                         salt: e.target.value,
                       },
                     })
@@ -376,8 +375,8 @@ const PreferencesPage = () => {
         <div>
           <input
             type="checkbox"
-            checked={perf.enableReactions}
-            onChange={e => updatePreferences(login, { ...perf, enableReactions: e.target.checked })}
+            checked={pref.enableReactions}
+            onChange={e => updatePreferences(id, { ...pref, enableReactions: e.target.checked })}
           />
         </div>
       </div>
@@ -390,12 +389,11 @@ const PreferencesPage = () => {
         </small>
         <input
           type="text"
-          value={perf.reactionEmoji}
+          value={pref.reactionEmoji}
           onChange={e => {
             const split = e.target.value.match(/[\p{L}\S]{1}/u);
-            console.debug(e.target.value, split);
-            updatePreferences(login, {
-              ...perf,
+            updatePreferences(id, {
+              ...pref,
               reactionEmoji: split?.[0] ?? "",
             });
           }}
@@ -413,8 +411,8 @@ const PreferencesPage = () => {
         <div>
           <input
             type="checkbox"
-            checked={perf.confirmReposts}
-            onChange={e => updatePreferences(login, { ...perf, confirmReposts: e.target.checked })}
+            checked={pref.confirmReposts}
+            onChange={e => updatePreferences(id, { ...pref, confirmReposts: e.target.checked })}
           />
         </div>
       </div>
@@ -430,8 +428,8 @@ const PreferencesPage = () => {
         <div>
           <input
             type="checkbox"
-            checked={perf.autoShowLatest}
-            onChange={e => updatePreferences(login, { ...perf, autoShowLatest: e.target.checked })}
+            checked={pref.autoShowLatest}
+            onChange={e => updatePreferences(id, { ...pref, autoShowLatest: e.target.checked })}
           />
         </div>
       </div>
@@ -443,18 +441,20 @@ const PreferencesPage = () => {
           <FormattedMessage {...messages.FileUploadHelp} />
         </small>
         <select
-          value={perf.fileUploader}
+          value={pref.fileUploader}
           onChange={e =>
-            updatePreferences(login, {
-              ...perf,
+            updatePreferences(id, {
+              ...pref,
               fileUploader: e.target.value,
             } as UserPreferences)
           }>
           <option value="void.cat">
             void.cat <FormattedMessage {...messages.Default} />
           </option>
+          <option value="void.cat-NIP96">void.cat (NIP-96)</option>
           <option value="nostr.build">nostr.build</option>
           <option value="nostrimg.com">nostrimg.com</option>
+          <option value="nostrcheck.me">nostrcheck.me (NIP-96)</option>
         </select>
       </div>
       <div className="flex justify-between">
@@ -469,8 +469,25 @@ const PreferencesPage = () => {
         <div>
           <input
             type="checkbox"
-            checked={perf.showDebugMenus}
-            onChange={e => updatePreferences(login, { ...perf, showDebugMenus: e.target.checked })}
+            checked={pref.showDebugMenus}
+            onChange={e => updatePreferences(id, { ...pref, showDebugMenus: e.target.checked })}
+          />
+        </div>
+      </div>
+      <div className="flex justify-between">
+        <div className="flex flex-col g8">
+          <h4>
+            <FormattedMessage defaultMessage="Hide muted notes" id="9kO0VQ" />
+          </h4>
+          <small>
+            <FormattedMessage defaultMessage="Muted notes will not be shown" id="sfL/O+" />
+          </small>
+        </div>
+        <div>
+          <input
+            type="checkbox"
+            checked={pref.hideMutedNotes}
+            onChange={e => updatePreferences(id, { ...pref, hideMutedNotes: e.target.checked })}
           />
         </div>
       </div>

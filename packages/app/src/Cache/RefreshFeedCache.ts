@@ -1,6 +1,7 @@
 import { FeedCache } from "@snort/shared";
 import { EventPublisher, RequestBuilder, TaggedNostrEvent } from "@snort/system";
-import { LoginSession } from "Login";
+
+import { LoginSession } from "@/Utils/Login";
 
 export type TWithCreated<T> = (T | Readonly<T>) & { created_at: number };
 
@@ -23,7 +24,6 @@ export abstract class RefreshFeedCache<T> extends FeedCache<TWithCreated<T>> {
 
   override async preload(): Promise<void> {
     await super.preload();
-    // load all dms to memory
     await this.buffer([...this.onTable]);
   }
 }

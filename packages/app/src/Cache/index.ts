@@ -1,35 +1,37 @@
-import { UserProfileCache, UserRelaysCache, RelayMetricCache } from "@snort/system";
+import { RelayMetricCache, UserRelaysCache } from "@snort/system";
 import { SnortSystemDb } from "@snort/system-web";
+import { WorkerRelayInterface } from "@snort/worker-relay";
+import WorkerRelayPath from "@snort/worker-relay/dist/worker?worker&url";
 
-import { EventInteractionCache } from "./EventInteractionCache";
-import { ChatCache } from "./ChatCache";
-import { Payments } from "./PaymentsCache";
+import { EventCacheWorker } from "./EventCacheWorker";
 import { GiftWrapCache } from "./GiftWrapCache";
-import { NotificationsCache } from "./Notifications";
-import { FollowsFeedCache } from "./FollowsFeed";
+import { ProfileCacheRelayWorker } from "./ProfileWorkerCache";
+
+export const Relay = new WorkerRelayInterface(WorkerRelayPath);
+export async function initRelayWorker() {
+  try {
+    await Relay.init("relay.db");
+  } catch (e) {
+    console.error(e);
+  }
+}
 
 export const SystemDb = new SnortSystemDb();
-export const UserCache = new UserProfileCache(SystemDb.users);
 export const UserRelays = new UserRelaysCache(SystemDb.userRelays);
 export const RelayMetrics = new RelayMetricCache(SystemDb.relayMetrics);
 
-export const Chats = new ChatCache();
-export const PaymentsCache = new Payments();
-export const InteractionCache = new EventInteractionCache();
+export const UserCache = new ProfileCacheRelayWorker(Relay);
+export const EventsCache = new EventCacheWorker(Relay);
+
 export const GiftsCache = new GiftWrapCache();
-export const Notifications = new NotificationsCache();
-export const FollowsFeed = new FollowsFeedCache();
 
 export async function preload(follows?: Array<string>) {
   const preloads = [
-    UserCache.preload(follows),
-    Chats.preload(),
-    InteractionCache.preload(),
-    UserRelays.preload(follows),
+    UserCache.preload(),
     RelayMetrics.preload(),
     GiftsCache.preload(),
-    Notifications.preload(),
-    FollowsFeed.preload(),
+    UserRelays.preload(follows),
+    EventsCache.preload(),
   ];
   await Promise.all(preloads);
 }

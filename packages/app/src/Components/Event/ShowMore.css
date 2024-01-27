@@ -1,0 +1,18 @@
+.show-more {
+  background: none;
+  border: none;
+  color: var(--highlight);
+  font-weight: normal;
+}
+
+.show-more:hover {
+  color: var(--highlight);
+  background: none;
+  border: none;
+  font-weight: normal;
+  text-decoration: underline;
+}
+
+.show-more-container {
+  min-height: 40px;
+}

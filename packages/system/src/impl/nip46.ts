@@ -85,11 +85,11 @@ export class Nip46Signer implements EventSigner {
     }
     return await new Promise<void>((resolve, reject) => {
       this.#conn = new Connection(this.#relay, { read: true, write: true });
-      this.#conn.OnEvent = async (sub, e) => {
+      this.#conn.on("event", async (sub, e) => {
         await this.#onReply(e);
-      };
-      this.#conn.OnConnected = async () => {
-        this.#conn!.QueueReq(
+      });
+      this.#conn.on("connected", async () => {
+        this.#conn!.queueReq(
           [
             "REQ",
             "reply",
@@ -110,8 +110,8 @@ export class Nip46Signer implements EventSigner {
             resolve,
           });
         }
-      };
-      this.#conn.Connect();
+      });
+      this.#conn.connect();
       this.#didInit = true;
     });
   }
@@ -119,8 +119,8 @@ export class Nip46Signer implements EventSigner {
   async close() {
     if (this.#conn) {
       await this.#disconnect();
-      this.#conn.CloseReq("reply");
-      this.#conn.Close();
+      this.#conn.closeReq("reply");
+      this.#conn.close();
       this.#conn = undefined;
       this.#didInit = false;
     }
@@ -139,7 +139,12 @@ export class Nip46Signer implements EventSigner {
   }
 
   async nip4Decrypt(content: string, otherKey: string) {
-    return await this.#rpc<string>("nip04_decrypt", [otherKey, content]);
+    const payload = await this.#rpc<string>("nip04_decrypt", [otherKey, content]);
+    try {
+      return JSON.parse(payload)[0];
+    } catch {
+      return "<error>";
+    }
   }
 
   nip44Encrypt(content: string, key: string): Promise<string> {
@@ -231,6 +236,6 @@ export class Nip46Signer implements EventSigner {
 
     this.#log("Send: %O", payload);
     const evCommand = await eb.buildAndSign(this.#insideSigner);
-    await this.#conn.SendAsync(evCommand);
+    await this.#conn.sendEventAsync(evCommand);
   }
 }

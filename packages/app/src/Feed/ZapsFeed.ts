@@ -1,7 +1,6 @@
-import { useMemo } from "react";
-import { EventKind, RequestBuilder, parseZap, NostrLink, NoteCollection } from "@snort/system";
+import { EventKind, NostrLink, parseZap, RequestBuilder } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
-import { UserCache } from "Cache";
+import { useMemo } from "react";
 
 export default function useZapsFeed(link?: NostrLink) {
   const sub = useMemo(() => {
@@ -11,11 +10,11 @@ export default function useZapsFeed(link?: NostrLink) {
     return b;
   }, [link]);
 
-  const zapsFeed = useRequestBuilder(NoteCollection, sub);
+  const zapsFeed = useRequestBuilder(sub);
 
   const zaps = useMemo(() => {
-    if (zapsFeed.data) {
-      const profileZaps = zapsFeed.data.map(a => parseZap(a, UserCache)).filter(z => z.valid);
+    if (zapsFeed) {
+      const profileZaps = zapsFeed.map(a => parseZap(a)).filter(z => z.valid);
       profileZaps.sort((a, b) => b.amount - a.amount);
       return profileZaps;
     }

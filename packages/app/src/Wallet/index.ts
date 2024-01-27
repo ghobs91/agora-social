@@ -1,10 +1,12 @@
+import { decodeInvoice, ExternalStore } from "@snort/shared";
 import { useEffect, useSyncExternalStore } from "react";
 
-import { ExternalStore, decodeInvoice } from "@snort/shared";
-import { unwrap } from "SnortUtils";
+import { unwrap } from "@/Utils";
+
+import AlbyWallet from "./AlbyWallet";
 import LNDHubWallet from "./LNDHub";
 import { NostrConnectWallet } from "./NostrWalletConnect";
-import { setupWebLNWalletConfig, WebLNWallet } from "./WebLN";
+import { WebLNWallet } from "./WebLN";
 
 export enum WalletKind {
   LNDHub = 1,
@@ -12,6 +14,7 @@ export enum WalletKind {
   WebLN = 3,
   NWC = 4,
   Cashu = 5,
+  Alby = 6,
 }
 
 export enum WalletErrorCode {
@@ -80,6 +83,7 @@ export interface WalletInvoice {
   timestamp: number;
   preimage?: string;
   state: WalletInvoiceState;
+  direction: "in" | "out";
 }
 
 export function prToWalletInvoice(pr: string) {
@@ -92,6 +96,7 @@ export function prToWalletInvoice(pr: string) {
       timestamp: parsedInvoice.timestamp ?? 0,
       state: parsedInvoice.expired ? WalletInvoiceState.Expired : WalletInvoiceState.Pending,
       pr,
+      direction: "in",
     } as WalletInvoice;
   }
 }
@@ -101,7 +106,6 @@ export type MilliSats = number;
 
 export interface LNWallet {
   isReady(): boolean;
-  canAutoLogin(): boolean;
   getInfo: () => Promise<WalletInfo>;
   login: (password?: string) => Promise<boolean>;
   close: () => Promise<boolean>;
@@ -109,6 +113,12 @@ export interface LNWallet {
   createInvoice: (req: InvoiceRequest) => Promise<WalletInvoice>;
   payInvoice: (pr: string) => Promise<WalletInvoice>;
   getInvoices: () => Promise<WalletInvoice[]>;
+
+  canAutoLogin: () => boolean;
+  canGetInvoices: () => boolean;
+  canGetBalance: () => boolean;
+  canCreateInvoice: () => boolean;
+  canPayInvoice: () => boolean;
 }
 
 export interface WalletConfig {
@@ -134,7 +144,6 @@ export class WalletStore extends ExternalStore<WalletStoreSnapshot> {
     this.#configs = [];
     this.#instance = new Map();
     this.load(false);
-    setupWebLNWalletConfig(this);
     this.notifyChange();
   }
 
@@ -161,6 +170,9 @@ export class WalletStore extends ExternalStore<WalletStoreSnapshot> {
             this.notifyChange();
           });
           return undefined;
+        } else {
+          this.#instance.set(activeConfig.id, w);
+          this.notifyChange();
         }
         return w;
       } else {
@@ -228,14 +240,31 @@ export class WalletStore extends ExternalStore<WalletStoreSnapshot> {
         return new WebLNWallet();
       }
       case WalletKind.LNDHub: {
-        return new LNDHubWallet(unwrap(cfg.data));
+        return new LNDHubWallet(unwrap(cfg.data), d => this.#onWalletChange(cfg, d));
       }
       case WalletKind.NWC: {
-        return new NostrConnectWallet(unwrap(cfg.data));
+        return new NostrConnectWallet(unwrap(cfg.data), d => this.#onWalletChange(cfg, d));
+      }
+      case WalletKind.Alby: {
+        return new AlbyWallet(JSON.parse(unwrap(cfg.data)), d => this.#onWalletChange(cfg, d));
       }
       case WalletKind.Cashu: {
-        return import("./Cashu").then(({ CashuWallet }) => new CashuWallet(unwrap(cfg.data)));
+        return import("./Cashu").then(
+          ({ CashuWallet }) => new CashuWallet(JSON.parse(unwrap(cfg.data)), d => this.#onWalletChange(cfg, d)),
+        );
       }
+    }
+  }
+
+  #onWalletChange(cfg: WalletConfig, data?: object) {
+    if (data) {
+      const activeConfig = this.#configs.find(a => a.id === cfg.id);
+      if (activeConfig) {
+        activeConfig.data = JSON.stringify(data);
+      }
+      this.save();
+    } else {
+      this.notifyChange();
     }
   }
 }

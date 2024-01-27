@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { useNavigate } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 
-import AsyncButton from "Element/AsyncButton";
-import { unwrap } from "SnortUtils";
-import { WalletConfig, WalletKind, Wallets } from "Wallet";
-import { useNavigate } from "react-router-dom";
+import AsyncButton from "@/Components/Button/AsyncButton";
+import { unwrap } from "@/Utils";
+import { WalletConfig, WalletKind, Wallets } from "@/Wallet";
 
 const ConnectCashu = () => {
   const navigate = useNavigate();
   const { formatMessage } = useIntl();
-  const [mintUrl, setMintUrl] = useState<string>();
+  const [mintUrl, setMintUrl] = useState<string>("https://8333.space:3338");
   const [error, setError] = useState<string>();
 
   async function tryConnect(config: string) {
@@ -19,8 +19,16 @@ const ConnectCashu = () => {
         throw new Error("Mint URL is required");
       }
 
-      const { CashuWallet } = await import("Wallet/Cashu");
-      const connection = new CashuWallet(config);
+      const { CashuWallet } = await import("@/Wallet/Cashu");
+      const connection = new CashuWallet(
+        {
+          url: config,
+          keys: {},
+          proofs: [],
+          keysets: [],
+        },
+        () => {},
+      );
       await connection.login();
       const info = await connection.getInfo();
       const newWallet = {
@@ -28,7 +36,7 @@ const ConnectCashu = () => {
         kind: WalletKind.Cashu,
         active: true,
         info,
-        data: mintUrl,
+        data: JSON.stringify(connection.getConfig()),
       } as WalletConfig;
       Wallets.add(newWallet);
       navigate("/settings/wallet");
@@ -39,6 +47,7 @@ const ConnectCashu = () => {
         setError(
           formatMessage({
             defaultMessage: "Unknown error",
+            id: "qDwvZ4",
           }),
         );
       }
@@ -48,7 +57,7 @@ const ConnectCashu = () => {
   return (
     <>
       <h4>
-        <FormattedMessage defaultMessage="Enter mint URL" />
+        <FormattedMessage defaultMessage="Enter mint URL" id="KoFlZg" />
       </h4>
       <div className="flex">
         <div className="grow mr10">
@@ -61,7 +70,7 @@ const ConnectCashu = () => {
           />
         </div>
         <AsyncButton onClick={() => tryConnect(unwrap(mintUrl))} disabled={!mintUrl}>
-          <FormattedMessage defaultMessage="Connect" />
+          <FormattedMessage defaultMessage="Connect" id="+vVZ/G" />
         </AsyncButton>
       </div>
       {error && <b className="error p10">{error}</b>}

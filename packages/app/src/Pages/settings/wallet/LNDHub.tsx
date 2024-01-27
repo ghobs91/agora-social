@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { useNavigate } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 
-import AsyncButton from "Element/AsyncButton";
-import { unwrap } from "SnortUtils";
-import LNDHubWallet from "Wallet/LNDHub";
-import { WalletConfig, WalletKind, Wallets } from "Wallet";
-import { useNavigate } from "react-router-dom";
+import AsyncButton from "@/Components/Button/AsyncButton";
+import { unwrap } from "@/Utils";
+import { WalletConfig, WalletKind, Wallets } from "@/Wallet";
+import LNDHubWallet from "@/Wallet/LNDHub";
 
 const ConnectLNDHub = () => {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ const ConnectLNDHub = () => {
 
   async function tryConnect(config: string) {
     try {
-      const connection = new LNDHubWallet(config);
+      const connection = new LNDHubWallet(config, () => {});
       await connection.login();
       const info = await connection.getInfo();
 
@@ -37,6 +37,7 @@ const ConnectLNDHub = () => {
         setError(
           formatMessage({
             defaultMessage: "Unknown error",
+            id: "qDwvZ4",
           }),
         );
       }
@@ -46,7 +47,7 @@ const ConnectLNDHub = () => {
   return (
     <>
       <h4>
-        <FormattedMessage defaultMessage="Enter LNDHub config" />
+        <FormattedMessage defaultMessage="Enter LNDHub config" id="KAhAcM" />
       </h4>
       <div className="flex">
         <div className="grow mr10">
@@ -59,7 +60,7 @@ const ConnectLNDHub = () => {
           />
         </div>
         <AsyncButton onClick={() => tryConnect(unwrap(config))} disabled={!config}>
-          <FormattedMessage defaultMessage="Connect" />
+          <FormattedMessage defaultMessage="Connect" id="+vVZ/G" />
         </AsyncButton>
       </div>
       {error && <b className="error p10">{error}</b>}

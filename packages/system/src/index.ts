@@ -1,15 +1,20 @@
-import { AuthHandler, RelaySettings, ConnectionStateSnapshot, OkResponse } from "./connection";
+import { RelaySettings } from "./connection";
 import { RequestBuilder } from "./request-builder";
-import { NoteStore, NoteStoreSnapshotData } from "./note-collection";
-import { Query } from "./query";
-import { NostrEvent, ReqFilter, TaggedNostrEvent } from "./nostr";
+import { NostrEvent, OkResponse, ReqFilter, TaggedNostrEvent } from "./nostr";
 import { ProfileLoaderService } from "./profile-cache";
-import { RelayCache } from "./gossip-model";
-import { QueryOptimizer } from "./query-optimizer";
+import { AuthorsRelaysCache, RelayMetadataLoader } from "./outbox-model";
+import { Optimizer } from "./query-optimizer";
 import { base64 } from "@scure/base";
+import { CachedTable } from "@snort/shared";
+import { ConnectionPool } from "./connection-pool";
+import EventEmitter from "eventemitter3";
+import { QueryEvents } from "./query";
+import { CacheRelay } from "./cache-relay";
 
-export * from "./nostr-system";
+export { NostrSystem } from "./nostr-system";
 export { default as EventKind } from "./event-kind";
+export { default as SocialGraph, socialGraphInstance } from "./SocialGraph/SocialGraph";
+export * from "./SocialGraph/UniqueIds";
 export * from "./nostr";
 export * from "./links";
 export * from "./nips";
@@ -29,6 +34,7 @@ export * from "./pow";
 export * from "./pow-util";
 export * from "./query-optimizer";
 export * from "./encrypted";
+export * from "./outbox-model";
 
 export * from "./impl/nip4";
 export * from "./impl/nip44";
@@ -40,6 +46,19 @@ export * from "./cache/user-relays";
 export * from "./cache/user-metadata";
 export * from "./cache/relay-metric";
 
+export * from "./worker/system-worker";
+
+export type QueryLike = {
+  get progress(): number;
+  feed: {
+    add: (evs: Array<TaggedNostrEvent>) => void;
+    clear: () => void;
+  };
+  cancel: () => void;
+  uncancel: () => void;
+  get snapshot(): Array<TaggedNostrEvent>;
+} & EventEmitter<QueryEvents>;
+
 export interface SystemInterface {
   /**
    * Check event signatures (reccomended)
@@ -47,34 +66,28 @@ export interface SystemInterface {
   checkSigs: boolean;
 
   /**
-   * Handler function for NIP-42
+   * Do some initialization
    */
-  HandleAuth?: AuthHandler;
-
-  /**
-   * Get a snapshot of the relay connections
-   */
-  get Sockets(): Array<ConnectionStateSnapshot>;
+  Init(): Promise<void>;
 
   /**
    * Get an active query by ID
    * @param id Query ID
    */
-  GetQuery(id: string): Query | undefined;
+  GetQuery(id: string): QueryLike | undefined;
 
   /**
    * Open a new query to relays
-   * @param type Store type
    * @param req Request to send to relays
    */
-  Query<T extends NoteStore>(type: { new (): T }, req: RequestBuilder): Query;
+  Query(req: RequestBuilder): QueryLike;
 
   /**
    * Fetch data from nostr relays asynchronously
    * @param req Request to send to relays
    * @param cb A callback which will fire every 100ms when new data is received
    */
-  Fetch(req: RequestBuilder, cb?: (evs: Array<TaggedNostrEvent>) => void): Promise<NoteStoreSnapshotData>;
+  Fetch(req: RequestBuilder, cb?: (evs: Array<TaggedNostrEvent>) => void): Promise<Array<TaggedNostrEvent>>;
 
   /**
    * Create a new permanent connection to a relay
@@ -88,6 +101,11 @@ export interface SystemInterface {
    * @param address Relay URL
    */
   DisconnectRelay(address: string): void;
+
+  /**
+   * Push an event into the system from external source
+   */
+  HandleEvent(subId: string, ev: TaggedNostrEvent): void;
 
   /**
    * Send an event to all permanent connections
@@ -106,17 +124,37 @@ export interface SystemInterface {
   /**
    * Profile cache/loader
    */
-  get ProfileLoader(): ProfileLoaderService;
+  get profileLoader(): ProfileLoaderService;
 
   /**
    * Relay cache for "Gossip" model
    */
-  get RelayCache(): RelayCache;
+  get relayCache(): AuthorsRelaysCache;
 
   /**
    * Query optimizer
    */
-  get QueryOptimizer(): QueryOptimizer;
+  get optimizer(): Optimizer;
+
+  /**
+   * Generic cache store for events
+   */
+  get eventsCache(): CachedTable<NostrEvent>;
+
+  /**
+   * Relay loader loads relay metadata for a set of profiles
+   */
+  get relayLoader(): RelayMetadataLoader;
+
+  /**
+   * Main connection pool
+   */
+  get pool(): ConnectionPool;
+
+  /**
+   * Local relay cache service
+   */
+  get cacheRelay(): CacheRelay | undefined;
 }
 
 export interface SystemSnapshot {
@@ -144,21 +182,28 @@ export interface MessageEncryptor {
   decryptData(payload: MessageEncryptorPayload, sharedSecet: Uint8Array): Promise<string> | string;
 }
 
-export function decodeEncryptionPayload(p: string) {
+export function decodeEncryptionPayload(p: string): MessageEncryptorPayload {
   if (p.startsWith("{") && p.endsWith("}")) {
     const pj = JSON.parse(p) as { v: number; nonce: string; ciphertext: string };
     return {
       v: pj.v,
       nonce: base64.decode(pj.nonce),
       ciphertext: base64.decode(pj.ciphertext),
-    } as MessageEncryptorPayload;
+    };
+  } else if (p.includes("?iv=")) {
+    const [ciphertext, nonce] = p.split("?iv=");
+    return {
+      v: MessageEncryptorVersion.Nip4,
+      nonce: base64.decode(nonce),
+      ciphertext: base64.decode(ciphertext),
+    };
   } else {
     const buf = base64.decode(p);
     return {
       v: buf[0],
       nonce: buf.subarray(1, 25),
       ciphertext: buf.subarray(25),
-    } as MessageEncryptorPayload;
+    };
   }
 }
 

@@ -2,9 +2,6 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  border: 1px solid var(--border-color);
-  border-bottom: none;
-  border-top: none;
 }
 
 .profile .banner {
@@ -39,8 +36,6 @@
 
 @media (min-width: 520px) {
   .profile .banner {
-    width: 100%;
-    max-width: 720px;
     height: 280px;
   }
 
@@ -132,12 +127,6 @@
   line-height: 24px;
 }
 
-.profile .link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .profile .link svg {
   color: var(--highlight);
 }
@@ -175,10 +164,6 @@
 
 .qr-modal .pfp .avatar-wrapper .avatar {
   border: none;
-}
-
-.qr-modal .pfp .username {
-  align-items: center;
 }
 
 .qr-modal canvas {

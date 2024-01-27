@@ -3,29 +3,29 @@ import { v4 as uuid } from "uuid";
 import { appendDedupe, dedupe, sanitizeRelayUrl, unixNowMs, unwrap } from "@snort/shared";
 
 import EventKind from "./event-kind";
-import { NostrLink, NostrPrefix, SystemInterface } from "index";
-import { ReqFilter, u256, HexKey } from "./nostr";
-import { RelayCache, splitByWriteRelays, splitFlatByWriteRelays } from "./gossip-model";
+import { NostrLink, NostrPrefix, SystemInterface } from ".";
+import { ReqFilter, u256, HexKey, TaggedNostrEvent } from "./nostr";
+import { AuthorsRelaysCache, splitByWriteRelays, splitFlatByWriteRelays } from "./outbox-model";
 
 /**
  * Which strategy is used when building REQ filters
  */
-export enum RequestStrategy {
+export const enum RequestStrategy {
   /**
    * Use the users default relays to fetch events,
    * this is the fallback option when there is no better way to query a given filter set
    */
-  DefaultRelays = 1,
+  DefaultRelays = "default",
 
   /**
    * Using a cached copy of the authors relay lists NIP-65, split a given set of request filters by pubkey
    */
-  AuthorsRelays = 2,
+  AuthorsRelays = "authors-relays",
 
   /**
    * Use pre-determined relays for query
    */
-  ExplicitRelays = 3,
+  ExplicitRelays = "explicit-relays",
 }
 
 /**
@@ -35,14 +35,42 @@ export interface BuiltRawReqFilter {
   filters: Array<ReqFilter>;
   relay: string;
   strategy: RequestStrategy;
+
+  // Use set sync from an existing set of events
+  syncFrom?: Array<TaggedNostrEvent>;
 }
 
 export interface RequestBuilderOptions {
+  /**
+   * Dont send CLOSE directly after EOSE and allow events to stream in
+   */
   leaveOpen?: boolean;
+
   /**
    * Do not apply diff logic and always use full filters for query
    */
   skipDiff?: boolean;
+
+  /**
+   * Pick N relays per pubkey when using outbox strategy
+   */
+  outboxPickN?: number;
+
+  /**
+   * Max wait time for this request
+   */
+  timeout?: number;
+
+  /**
+   * How many milli-seconds to wait to allow grouping
+   */
+  groupingDelay?: number;
+
+  /**
+   * If events should be added automatically to the internal NoteCollection
+   * default=true
+   */
+  fillStore?: boolean;
 }
 
 /**
@@ -63,6 +91,10 @@ export class RequestBuilder {
 
   get numFilters() {
     return this.#builders.length;
+  }
+
+  get filterBuilders() {
+    return this.#builders;
   }
 
   get options() {
@@ -101,40 +133,37 @@ export class RequestBuilder {
   }
 
   build(system: SystemInterface): Array<BuiltRawReqFilter> {
-    const expanded = this.#builders.flatMap(a => a.build(system.RelayCache, this.id));
+    const expanded = this.#builders.flatMap(a => a.build(system.relayCache, this.#options));
     return this.#groupByRelay(system, expanded);
   }
 
   /**
    * Detects a change in request from a previous set of filters
    */
-  buildDiff(system: SystemInterface, prev: Array<ReqFilter>): Array<BuiltRawReqFilter> {
+  async buildDiff(system: SystemInterface, prev: Array<ReqFilter>): Promise<Array<BuiltRawReqFilter>> {
     const start = unixNowMs();
 
-    const diff = system.QueryOptimizer.getDiff(prev, this.buildRaw());
+    const diff = system.optimizer.getDiff(prev, this.buildRaw());
     const ts = unixNowMs() - start;
     this.#log("buildDiff %s %d ms +%d", this.id, ts, diff.length);
     if (diff.length > 0) {
-      return splitFlatByWriteRelays(system.RelayCache, diff).map(a => {
+      // todo: fix for explicit relays
+      return splitFlatByWriteRelays(system.relayCache, diff).map(a => {
         return {
           strategy: RequestStrategy.AuthorsRelays,
-          filters: system.QueryOptimizer.flatMerge(a.filters),
+          filters: system.optimizer.flatMerge(a.filters),
           relay: a.relay,
         };
       });
-    } else {
-      this.#log(`Wasted ${ts} ms detecting no changes!`);
     }
     return [];
   }
 
   /**
    * Merge a set of expanded filters into the smallest number of subscriptions by merging similar requests
-   * @param expanded
-   * @returns
    */
-  #groupByRelay(system: SystemInterface, expanded: Array<BuiltRawReqFilter>) {
-    const relayMerged = expanded.reduce((acc, v) => {
+  #groupByRelay(system: SystemInterface, filters: Array<BuiltRawReqFilter>) {
+    const relayMerged = filters.reduce((acc, v) => {
       const existing = acc.get(v.relay);
       if (existing) {
         existing.push(v);
@@ -146,9 +175,7 @@ export class RequestBuilder {
 
     const filtersSquashed = [...relayMerged.values()].map(a => {
       return {
-        filters: system.QueryOptimizer.flatMerge(
-          a.flatMap(b => b.filters.flatMap(c => system.QueryOptimizer.expandFilter(c))),
-        ),
+        filters: system.optimizer.flatMerge(a.flatMap(b => b.filters.flatMap(c => system.optimizer.expandFilter(c)))),
         relay: a[0].relay,
         strategy: a[0].strategy,
       } as BuiltRawReqFilter;
@@ -267,12 +294,16 @@ export class RequestFilterBuilder {
   /**
    * Build/expand this filter into a set of relay specific queries
    */
-  build(relays: RelayCache, id: string): Array<BuiltRawReqFilter> {
+  build(relays: AuthorsRelaysCache, options?: RequestBuilderOptions): Array<BuiltRawReqFilter> {
+    return this.#buildFromFilter(relays, this.#filter, options);
+  }
+
+  #buildFromFilter(relays: AuthorsRelaysCache, f: ReqFilter, options?: RequestBuilderOptions) {
     // use the explicit relay list first
     if (this.#relays.size > 0) {
       return [...this.#relays].map(r => {
         return {
-          filters: [this.#filter],
+          filters: [f],
           relay: r,
           strategy: RequestStrategy.ExplicitRelays,
         };
@@ -280,8 +311,8 @@ export class RequestFilterBuilder {
     }
 
     // If any authors are set use the gossip model to fetch data for each author
-    if (this.#filter.authors) {
-      const split = splitByWriteRelays(relays, this.#filter);
+    if (f.authors) {
+      const split = splitByWriteRelays(relays, f, options?.outboxPickN);
       return split.map(a => {
         return {
           filters: [a.filter],
@@ -293,7 +324,7 @@ export class RequestFilterBuilder {
 
     return [
       {
-        filters: [this.#filter],
+        filters: [f],
         relay: "",
         strategy: RequestStrategy.DefaultRelays,
       },

@@ -4,16 +4,53 @@
   "appTitle": "Snort - Nostr",
   "hostname": "snort.social",
   "nip05Domain": "snort.social",
-  "favicon": "public/favicon.ico",
-  "appleTouchIconUrl": "/nostrich_512.png",
+  "icon": "/nostrich_512.png",
+  "navLogo": null,
+  "publicDir": "public/snort",
   "httpCache": "",
   "animalNamePlaceholders": false,
+  "defaultZapPoolFee": 1,
   "features": {
     "analytics": true,
     "subscriptions": true,
     "deck": true,
-    "zapPool": true
+    "zapPool": true,
+    "notificationGraph": true,
+    "communityLeaders": true,
+    "nostrAddress": true,
+    "pushNotifications": true
   },
+  "signUp": {
+    "moderation": true,
+    "defaultFollows": ["npub1sn0rtcjcf543gj4wsg7fa59s700d5ztys5ctj0g69g2x6802npjqhjjtws"]
+  },
+  "defaultPreferences": {
+    "hideMutedNotes": false
+  },
+  "media": {
+    "bypassImgProxyError": false,
+    "preferLargeMedia": true
+  },
+  "communityLeaders": {
+    "list": "naddr1qq4xc6tnw3ez6vp58y6rywpjxckngdtyxukngwr9vckkze33vcknzcnrxcenje35xqmn2cczyp3lucccm3v9s087z6qslpkap8schltk427zfgqgrn3g2menq5zw6qcyqqq82vqprpmhxue69uhhyetvv9ujuumwdae8gtnnda3kjctv7rajfl"
+  },
+  "noteCreatorToast": false,
+  "hideFromNavbar": ["/graph"],
+  "deckSubKind": 1,
+  "showPowIcon": true,
   "eventLinkPrefix": "nevent",
-  "profileLinkPrefix": "nprofile"
+  "profileLinkPrefix": "nprofile",
+  "defaultRelays": {
+    "wss://relay.snort.social/": { "read": true, "write": true },
+    "wss://nostr.wine/": { "read": true, "write": false },
+    "wss://eden.nostr.land/": { "read": true, "write": false }
+  },
+  "alby": {
+    "clientId": "pohiJjPhQR",
+    "clientSecret": "GAl1YKLA3FveK1gLBYok"
+  },
+  "chatChannels": [
+    { "type": "telegram", "value": "https://t.me/irismessenger" },
+    { "type": "nip28", "value": "23286a4602ada10cc10200553bff62a110e8dc0eacddf73277395a89ddf26a09" }
+  ]
 }

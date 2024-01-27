@@ -1,3 +1,5 @@
+import { barrierQueue, processWorkQueue, unwrap, WorkQueueItem } from "@snort/shared";
+
 import {
   InvoiceRequest,
   LNWallet,
@@ -11,8 +13,7 @@ import {
   WalletInvoiceState,
   WalletKind,
   WalletStore,
-} from "Wallet";
-import { barrierQueue, processWorkQueue, WorkQueueItem } from "@snort/shared";
+} from "@/Wallet";
 
 const WebLNQueue: Array<WorkQueueItem> = [];
 processWorkQueue(WebLNQueue);
@@ -42,6 +43,22 @@ export function setupWebLNWalletConfig(store: WalletStore) {
 export class WebLNWallet implements LNWallet {
   isReady(): boolean {
     return window.webln !== undefined && window.webln !== null;
+  }
+
+  canCreateInvoice() {
+    return true;
+  }
+
+  canPayInvoice() {
+    return true;
+  }
+
+  canGetInvoices() {
+    return false;
+  }
+
+  canGetBalance() {
+    return window.webln?.getBalance !== undefined;
   }
 
   canAutoLogin(): boolean {
@@ -75,8 +92,13 @@ export class WebLNWallet implements LNWallet {
     return Promise.resolve(true);
   }
 
-  getBalance(): Promise<Sats> {
-    return Promise.resolve(0);
+  async getBalance(): Promise<Sats> {
+    await this.login();
+    if (window.webln?.getBalance) {
+      const rsp = await barrierQueue(WebLNQueue, async () => await unwrap(window.webln?.getBalance).call(window.webln));
+      return rsp.balance;
+    }
+    return 0;
   }
 
   async createInvoice(req: InvoiceRequest): Promise<WalletInvoice> {
@@ -112,6 +134,7 @@ export class WebLNWallet implements LNWallet {
       if (rsp) {
         invoice.state = WalletInvoiceState.Paid;
         invoice.preimage = rsp.preimage;
+        invoice.fees = "route" in rsp ? (rsp.route as { total_fees: number }).total_fees : 0;
         return invoice;
       } else {
         invoice.state = WalletInvoiceState.Failed;

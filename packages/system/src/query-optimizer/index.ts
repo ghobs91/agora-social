@@ -1,7 +1,9 @@
-import { ReqFilter } from "../nostr";
+import { schnorr } from "@noble/curves/secp256k1";
+import { NostrEvent, ReqFilter } from "../nostr";
 import { expandFilter } from "./request-expander";
 import { flatMerge, mergeSimilar } from "./request-merger";
 import { diffFilters } from "./request-splitter";
+import { EventExt } from "../event-ext";
 
 export interface FlatReqFilter {
   keys: number;
@@ -17,16 +19,18 @@ export interface FlatReqFilter {
   since?: number;
   until?: number;
   limit?: number;
+  resultSetId: string;
 }
 
-export interface QueryOptimizer {
+export interface Optimizer {
   expandFilter(f: ReqFilter): Array<FlatReqFilter>;
   getDiff(prev: Array<ReqFilter>, next: Array<ReqFilter>): Array<FlatReqFilter>;
   flatMerge(all: Array<FlatReqFilter>): Array<ReqFilter>;
   compress(all: Array<ReqFilter>): Array<ReqFilter>;
+  schnorrVerify(ev: NostrEvent): boolean;
 }
 
-export const DefaultQueryOptimizer = {
+export const DefaultOptimizer = {
   expandFilter: (f: ReqFilter) => {
     return expandFilter(f);
   },
@@ -43,4 +47,8 @@ export const DefaultQueryOptimizer = {
   compress: (all: Array<ReqFilter>) => {
     return mergeSimilar(all);
   },
-} as QueryOptimizer;
+  schnorrVerify: ev => {
+    const id = EventExt.createId(ev);
+    return schnorr.verify(ev.sig, id, ev.pubkey);
+  },
+} as Optimizer;

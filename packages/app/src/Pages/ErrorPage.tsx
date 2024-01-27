@@ -1,16 +1,17 @@
-import { db } from "Db";
-import AsyncButton from "Element/AsyncButton";
 import { FormattedMessage } from "react-intl";
 import { useRouteError } from "react-router-dom";
+
+import AsyncButton from "@/Components/Button/AsyncButton";
+import { db } from "@/Db";
 
 const ErrorPage = () => {
   const error = useRouteError();
 
   console.error(error);
   return (
-    <div className="main-content page">
+    <div className="p-2">
       <h4>
-        <FormattedMessage defaultMessage="An error has occured!" />
+        <FormattedMessage defaultMessage="An error has occured!" id="FfYsOb" />
       </h4>
       <AsyncButton
         onClick={async () => {
@@ -18,17 +19,11 @@ const ErrorPage = () => {
           globalThis.localStorage.clear();
           globalThis.location.href = "/";
         }}>
-        <FormattedMessage defaultMessage="Clear cache and reload" />
+        <FormattedMessage defaultMessage="Clear cache and reload" id="HWbkEK" />
       </AsyncButton>
-      {
-        <pre>
-          {JSON.stringify(
-            error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : error,
-            undefined,
-            "  ",
-          )}
-        </pre>
-      }
+      <h5>{error.message}</h5>
+      <div className="my-2">{error.message}</div>
+      <pre className="my-2 whitespace-pre-wrap">{error.stack}</pre>
     </div>
   );
 };

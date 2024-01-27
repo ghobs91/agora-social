@@ -1,32 +1,17 @@
 import { FormattedMessage } from "react-intl";
 
-import { ApiHost } from "Const";
-import Nip5Service from "Element/Nip5Service";
+import Nip5Service from "@/Components/Nip5Service";
+import { SnortNostrAddressService } from "@/Pages/settings/SnortNostrAddressService";
 
 import messages from "./messages";
 
-export const SnortNostrAddressService = {
-  name: "Snort",
-  service: `${ApiHost}/api/v1/n5sp`,
-  link: "https://snort.social/",
-  supportLink: "https://snort.social/help",
-  about: <FormattedMessage {...messages.SnortSocialNip} />,
-};
-export const NostrPlebsService = {
-  name: "Nostr Plebs",
-  service: "https://nostrplebs.com/api/v1",
-  link: "https://nostrplebs.com/",
-  supportLink: "https://nostrplebs.com/manage",
-  about: <FormattedMessage {...messages.NostrPlebsNip} />,
-};
-
-export const Nip5Services = [SnortNostrAddressService];
+const Nip5Services = [SnortNostrAddressService];
 
 export default function NostrAddressPage() {
   return (
     <div className="main-content p">
       <h2>
-        <FormattedMessage defaultMessage="Buy nostr address" />
+        <FormattedMessage defaultMessage="Buy nostr address" id="MuVeKe" />
       </h2>
       <p>
         <FormattedMessage {...messages.Nip05} />

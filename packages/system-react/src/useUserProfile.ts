@@ -1,25 +1,32 @@
 import { useContext, useSyncExternalStore } from "react";
-import { HexKey, MetadataCache } from "@snort/system";
+import { HexKey, CachedMetadata } from "@snort/system";
 import { SnortContext } from "./context";
 
 /**
  * Gets a profile from cache or requests it from the relays
  */
-export function useUserProfile(pubKey?: HexKey): MetadataCache | undefined {
+export function useUserProfile(pubKey?: HexKey): CachedMetadata | undefined {
   const system = useContext(SnortContext);
-  return useSyncExternalStore<MetadataCache | undefined>(
+  return useSyncExternalStore<CachedMetadata | undefined>(
     h => {
       if (pubKey) {
-        system.ProfileLoader.TrackMetadata(pubKey);
+        const handler = (keys: Array<string>) => {
+          if (keys.includes(pubKey)) {
+            h();
+          }
+        };
+        system.profileLoader.cache.on("change", handler);
+        system.profileLoader.TrackKeys(pubKey);
+
+        return () => {
+          system.profileLoader.cache.off("change", handler);
+          system.profileLoader.UntrackKeys(pubKey);
+        };
       }
-      const release = system.ProfileLoader.Cache.hook(h, pubKey);
       return () => {
-        release();
-        if (pubKey) {
-          system.ProfileLoader.UntrackMetadata(pubKey);
-        }
+        // noop
       };
     },
-    () => system.ProfileLoader.Cache.getFromCache(pubKey),
+    () => system.profileLoader.cache.getFromCache(pubKey),
   );
 }

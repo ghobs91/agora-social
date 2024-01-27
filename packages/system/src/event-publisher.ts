@@ -1,6 +1,6 @@
 import * as secp from "@noble/curves/secp256k1";
 import * as utils from "@noble/curves/abstract/utils";
-import { unwrap, getPublicKey, unixNow } from "@snort/shared";
+import { unwrap } from "@snort/shared";
 
 import {
   decodeEncryptionPayload,
@@ -8,7 +8,6 @@ import {
   EventSigner,
   FullRelaySettings,
   HexKey,
-  Lists,
   MessageEncryptorVersion,
   NostrEvent,
   NostrLink,
@@ -18,6 +17,7 @@ import {
   RelaySettings,
   SignerSupports,
   TaggedNostrEvent,
+  ToNostrEventTag,
   u256,
   UserMetadata,
 } from ".";
@@ -104,11 +104,14 @@ export class EventPublisher {
     return await this.#sign(eb);
   }
 
-  async muted(keys: HexKey[], priv: HexKey[]) {
-    const eb = this.#eb(EventKind.PubkeyLists);
-
-    eb.tag(["d", Lists.Muted]);
-    keys.forEach(p => {
+  /**
+   * Build a mute list event using lists of pubkeys
+   * @param pub Public mute list
+   * @param priv Private mute list
+   */
+  async muted(pub: Array<string>, priv: Array<string>) {
+    const eb = this.#eb(EventKind.MuteList);
+    pub.forEach(p => {
       eb.tag(["p", p]);
     });
     if (priv.length > 0) {
@@ -119,20 +122,25 @@ export class EventPublisher {
     return await this.#sign(eb);
   }
 
-  async noteList(notes: u256[], list: Lists) {
-    const eb = this.#eb(EventKind.NoteLists);
-    eb.tag(["d", list]);
+  /**
+   * Build a pin list event using lists of event links
+   */
+  async pinned(notes: Array<ToNostrEventTag>) {
+    const eb = this.#eb(EventKind.PinList);
     notes.forEach(n => {
-      eb.tag(["e", n]);
+      eb.tag(unwrap(n.toEventTag()));
     });
     return await this.#sign(eb);
   }
 
-  async tags(tags: string[]) {
-    const eb = this.#eb(EventKind.TagLists);
-    eb.tag(["d", Lists.Followed]);
-    tags.forEach(t => {
-      eb.tag(["t", t]);
+  /**
+   * Build a categorized bookmarks event with a given label
+   * @param notes List of bookmarked links
+   */
+  async bookmarks(notes: Array<ToNostrEventTag>) {
+    const eb = this.#eb(EventKind.BookmarksList);
+    notes.forEach(n => {
+      eb.tag(unwrap(n.toEventTag()));
     });
     return await this.#sign(eb);
   }
@@ -170,9 +178,10 @@ export class EventPublisher {
     fnExtra?: EventBuilderHook,
   ) {
     const eb = this.#eb(EventKind.ZapRequest);
-    eb.content(msg ?? "");
+    eb.content(msg?.trim() ?? "");
     if (note) {
-      eb.tag(unwrap(note.toEventTag()));
+      // HACK: remove relay tag, some zap services dont like relay tags
+      eb.tag(unwrap(note.toEventTag()).slice(0, 2));
     }
     eb.tag(["p", author]);
     eb.tag(["relays", ...relays.map(a => a.trim())]);
@@ -248,12 +257,9 @@ export class EventPublisher {
     return await this.#sign(eb);
   }
 
-  async contactList(follows: Array<HexKey>, relays: Record<string, RelaySettings>) {
+  async contactList(tags: Array<[string, string]>) {
     const eb = this.#eb(EventKind.ContactList);
-    eb.content(JSON.stringify(relays));
-
-    const temp = new Set(follows.filter(a => a.length === 64).map(a => a.toLowerCase()));
-    temp.forEach(a => eb.tag(["p", a]));
+    tags.forEach(a => eb.tag(a));
     return await this.#sign(eb);
   }
 
@@ -265,6 +271,7 @@ export class EventPublisher {
     eb.tag(["e", id]);
     return await this.#sign(eb);
   }
+
   /**
    * Repost a note (NIP-18)
    */
@@ -319,6 +326,13 @@ export class EventPublisher {
     const eb = new EventBuilder();
     eb.pubKey(this.#pubKey);
     fnHook(eb);
+    return await this.#sign(eb);
+  }
+
+  async appData(data: object, id: string) {
+    const eb = this.#eb(EventKind.AppData);
+    eb.content(await this.nip4Encrypt(JSON.stringify(data), this.#pubKey));
+    eb.tag(["d", id]);
     return await this.#sign(eb);
   }
 

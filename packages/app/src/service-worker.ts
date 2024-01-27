@@ -1,21 +1,135 @@
 /// <reference lib="webworker" />
+import { CacheableResponsePlugin } from "workbox-cacheable-response";
+
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: (string | PrecacheEntry)[];
 };
 
-import { NostrLink, NostrPrefix, TLVEntryType, encodeTLVEntries, tryParseNostrLink } from "@snort/system";
-import { formatShort } from "Number";
-import { defaultAvatar, hexToBech32 } from "SnortUtils";
+import { encodeTLVEntries, NostrLink, NostrPrefix, TLVEntryType, tryParseNostrLink } from "@snort/system";
 import { clientsClaim } from "workbox-core";
-import { PrecacheEntry, precacheAndRoute } from "workbox-precaching";
+import { ExpirationPlugin } from "workbox-expiration";
+import { precacheAndRoute, PrecacheEntry } from "workbox-precaching";
+import { registerRoute } from "workbox-routing";
+import { CacheFirst, StaleWhileRevalidate } from "workbox-strategies";
+
+import { defaultAvatar, hexToBech32 } from "@/Utils";
+import { formatShort } from "@/Utils/Number";
 
 precacheAndRoute(self.__WB_MANIFEST);
 clientsClaim();
+
+// cache everything in current domain /assets because precache doesn't seem to include everything
+registerRoute(
+  ({ url }) => url.origin === location.origin && url.pathname.startsWith("/assets"),
+  new StaleWhileRevalidate({
+    cacheName: "assets-cache",
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 200,
+        matchOptions: {
+          ignoreVary: true,
+        },
+      }),
+    ],
+  }),
+);
+
+registerRoute(
+  ({ url }) => url.pathname.endsWith("/.well-known/nostr.json"),
+  new StaleWhileRevalidate({
+    cacheName: "nostr-json-cache",
+    plugins: [new ExpirationPlugin({ maxAgeSeconds: 4 * 60 * 60 })],
+  }),
+);
+
+// Avatars
+registerRoute(
+  ({ request, url }) => {
+    return (
+      request.destination === "image" &&
+      url.href.startsWith("https://imgproxy.snort.social/") &&
+      (url.pathname.includes("rs:fit:32:32") || url.pathname.includes("rs:fit:120:120"))
+    );
+  },
+  new CacheFirst({
+    cacheName: "avatar-cache",
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 200, // gif avatars can still be large
+        matchOptions: {
+          ignoreVary: true,
+        },
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+    ],
+  }),
+);
+
+// Cache images from any domain
+registerRoute(
+  // match images except gif
+  ({ request, url }) => request.destination === "image" && !url.pathname.endsWith(".gif"),
+  new CacheFirst({
+    cacheName: "image-cache",
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 100,
+        matchOptions: {
+          ignoreVary: true,
+        },
+      }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+    ],
+  }),
+);
+
+registerRoute(
+  ({ url }) => url.origin === "https://nostr.api.v0l.io" && url.pathname.startsWith("/api/v1/preview"),
+  new CacheFirst({
+    cacheName: "preview-cache",
+    plugins: [
+      new ExpirationPlugin({ maxAgeSeconds: 24 * 60 * 60 }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  }),
+);
+
+registerRoute(
+  ({ url }) => url.origin === "https://api.snort.social" && url.pathname.startsWith("/api/v1/translate"),
+  new CacheFirst({
+    cacheName: "translate-cache",
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 1000 }),
+      new CacheableResponsePlugin({
+        statuses: [0, 200, 204],
+      }),
+    ],
+  }),
+);
 
 self.addEventListener("message", event => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
   }
+});
+self.addEventListener("install", event => {
+  // delete all cache on install
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          console.debug("Deleting cache: ", cacheName);
+          return caches.delete(cacheName);
+        }),
+      );
+    }),
+  );
+  // always skip waiting
+  self.skipWaiting();
 });
 
 const enum PushType {
@@ -174,7 +288,6 @@ function makeNotification(n: PushNotification) {
   const ret = {
     body: body(),
     icon: evx.author.avatar ?? defaultAvatar(evx.author.pubkey),
-    badge: `${location.protocol}//${location.hostname}${CONFIG.appleTouchIconUrl}`,
     timestamp: evx.created_at * 1000,
     tag: evx.id,
     data: JSON.stringify(n),

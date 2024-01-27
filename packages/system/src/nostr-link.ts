@@ -1,4 +1,4 @@
-import { bech32ToHex, hexToBech32, unwrap } from "@snort/shared";
+import { bech32ToHex, hexToBech32, isHex, removeUndefined, unwrap } from "@snort/shared";
 import {
   decodeTLV,
   encodeTLV,
@@ -12,29 +12,58 @@ import {
 } from ".";
 import { findTag } from "./utils";
 
-export class NostrLink {
+export interface ToNostrEventTag {
+  toEventTag(): Array<string> | undefined;
+}
+
+export class NostrHashtagLink implements ToNostrEventTag {
+  constructor(readonly tag: string) {}
+
+  toEventTag(): string[] | undefined {
+    return ["t", this.tag];
+  }
+}
+
+export class NostrLink implements ToNostrEventTag {
   constructor(
     readonly type: NostrPrefix,
     readonly id: string,
     readonly kind?: number,
     readonly author?: string,
     readonly relays?: Array<string>,
-  ) {}
-
-  encode(type?: NostrPrefix): string {
-    // cant encode 'naddr' to 'note'/'nevent' because 'id' is not hex
-    let newType = this.type === NostrPrefix.Address ? this.type : type ?? this.type;
-    if (newType === NostrPrefix.Note || newType === NostrPrefix.PrivateKey || newType === NostrPrefix.PublicKey) {
-      return hexToBech32(newType, this.id);
-    } else {
-      return encodeTLV(newType, this.id, this.relays, this.kind, this.author);
+  ) {
+    if (type !== NostrPrefix.Address && !isHex(id)) {
+      throw new Error("ID must be hex");
     }
   }
 
-  toEventTag() {
-    const relayEntry = this.relays ? [this.relays[0]] : [];
-    if (this.type === NostrPrefix.PublicKey) {
-      return ["p", this.id];
+  encode(type?: NostrPrefix): string {
+    try {
+      // cant encode 'naddr' to 'note'/'nevent' because 'id' is not hex
+      let newType = this.type === NostrPrefix.Address ? this.type : type ?? this.type;
+      if (newType === NostrPrefix.Note || newType === NostrPrefix.PrivateKey || newType === NostrPrefix.PublicKey) {
+        return hexToBech32(newType, this.id);
+      } else {
+        return encodeTLV(newType, this.id, this.relays, this.kind, this.author);
+      }
+    } catch (e) {
+      console.error("Invalid data", this, e);
+      throw e;
+    }
+  }
+
+  toEventTag(marker?: string) {
+    const relayEntry = this.relays?.at(0) ? [this.relays[0]] : [];
+
+    if (marker) {
+      if (relayEntry.length === 0) {
+        relayEntry.push("");
+      }
+      relayEntry.push(marker);
+    }
+
+    if (this.type === NostrPrefix.PublicKey || this.type === NostrPrefix.Profile) {
+      return ["p", this.id, ...relayEntry];
     } else if (this.type === NostrPrefix.Note || this.type === NostrPrefix.Event) {
       return ["e", this.id, ...relayEntry];
     } else if (this.type === NostrPrefix.Address) {
@@ -61,7 +90,7 @@ export class NostrLink {
   isReplyToThis(ev: NostrEvent) {
     const NonNip10Kinds = [EventKind.Reaction, EventKind.Repost, EventKind.ZapReceipt];
     if (NonNip10Kinds.includes(ev.kind)) {
-      const lastRef = ev.tags.findLast(a => a[0] === "e" || a[1] === "a");
+      const lastRef = ev.tags.findLast(a => a[0] === "e" || a[0] === "a");
       if (!lastRef) return false;
 
       if (
@@ -165,6 +194,18 @@ export class NostrLink {
     throw new Error(`Unknown tag kind ${tag[0]}`);
   }
 
+  static fromTags(tags: Array<Array<string>>) {
+    return removeUndefined(
+      tags.map(a => {
+        try {
+          return NostrLink.fromTag(a);
+        } catch {
+          // ignored, cant be mapped
+        }
+      }),
+    );
+  }
+
   static fromEvent(ev: TaggedNostrEvent | NostrEvent) {
     const relays = "relays" in ev ? ev.relays : undefined;
 
@@ -200,8 +241,16 @@ export function tryParseNostrLink(link: string, prefixHint?: NostrPrefix): Nostr
   }
 }
 
+export function trimNostrLink(link: string) {
+  let entity = link.startsWith("web+nostr:") || link.startsWith("nostr:") ? link.split(":")[1] : link;
+
+  // trim any non-bech32 chars
+  entity = entity.match(/(n(?:pub|profile|event|ote|addr|req)1[acdefghjklmnpqrstuvwxyz023456789]+)/)?.[0] ?? entity;
+  return entity;
+}
+
 export function parseNostrLink(link: string, prefixHint?: NostrPrefix): NostrLink {
-  const entity = link.startsWith("web+nostr:") || link.startsWith("nostr:") ? link.split(":")[1] : link;
+  const entity = trimNostrLink(link);
 
   const isPrefix = (prefix: NostrPrefix) => {
     return entity.startsWith(prefix);
@@ -215,7 +264,12 @@ export function parseNostrLink(link: string, prefixHint?: NostrPrefix): NostrLin
     const id = bech32ToHex(entity);
     if (id.length !== 64) throw new Error("Invalid nostr link, must contain 32 byte id");
     return new NostrLink(NostrPrefix.Note, id);
-  } else if (isPrefix(NostrPrefix.Profile) || isPrefix(NostrPrefix.Event) || isPrefix(NostrPrefix.Address)) {
+  } else if (
+    isPrefix(NostrPrefix.Profile) ||
+    isPrefix(NostrPrefix.Event) ||
+    isPrefix(NostrPrefix.Address) ||
+    isPrefix(NostrPrefix.Req)
+  ) {
     const decoded = decodeTLV(entity);
 
     const id = decoded.find(a => a.type === TLVEntryType.Special)?.value as string;
@@ -231,6 +285,8 @@ export function parseNostrLink(link: string, prefixHint?: NostrPrefix): NostrLin
       return new NostrLink(NostrPrefix.Event, id, kind, author, relays);
     } else if (isPrefix(NostrPrefix.Address)) {
       return new NostrLink(NostrPrefix.Address, id, kind, author, relays);
+    } else if (isPrefix(NostrPrefix.Req)) {
+      return new NostrLink(NostrPrefix.Req, id);
     }
   } else if (prefixHint) {
     return new NostrLink(prefixHint, link);

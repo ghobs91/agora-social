@@ -1,5 +1,7 @@
 import LNC from "@lightninglabs/lnc-web";
-import { unwrap } from "SnortUtils";
+import debug from "debug";
+
+import { unwrap } from "@/Utils";
 import {
   InvoiceRequest,
   LNWallet,
@@ -10,8 +12,7 @@ import {
   WalletInfo,
   WalletInvoice,
   WalletInvoiceState,
-} from "Wallet";
-import debug from "debug";
+} from "@/Wallet";
 
 enum Payment_PaymentStatus {
   UNKNOWN = "UNKNOWN",
@@ -32,8 +33,24 @@ export class LNCWallet implements LNWallet {
     });
   }
 
-  canAutoLogin(): boolean {
+  canAutoLogin() {
     return false;
+  }
+
+  canGetInvoices() {
+    return true;
+  }
+
+  canGetBalance() {
+    return true;
+  }
+
+  canCreateInvoice() {
+    return true;
+  }
+
+  canPayInvoice() {
+    return true;
   }
 
   isReady(): boolean {

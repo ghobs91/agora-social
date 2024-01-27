@@ -1,7 +1,8 @@
-import { useContext } from "react";
 import { SnortContext } from "@snort/system-react";
-import useLogin from "Hooks/useLogin";
-import { LoginStore, createPublisher, sessionNeedsPin } from "Login";
+import { useContext } from "react";
+
+import useLogin from "@/Hooks/useLogin";
+import { createPublisher, LoginStore, sessionNeedsPin } from "@/Utils/Login";
 
 export default function useEventPublisher() {
   const login = useLogin();

@@ -2,17 +2,23 @@ import { useEffect, useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { Link, useNavigate } from "react-router-dom";
 
-import { ApiHost } from "Const";
-import useEventPublisher from "Hooks/useEventPublisher";
-import SnortServiceProvider, { ManageHandle } from "Nip05/SnortServiceProvider";
+import { ErrorOrOffline } from "@/Components/ErrorOrOffline";
+import useEventPublisher from "@/Hooks/useEventPublisher";
+import { ApiHost } from "@/Utils/Const";
+import SnortServiceProvider, { ManageHandle } from "@/Utils/Nip05/SnortServiceProvider";
 
 export default function ListHandles() {
   const navigate = useNavigate();
   const { publisher } = useEventPublisher();
   const [handles, setHandles] = useState<Array<ManageHandle>>([]);
+  const [error, setError] = useState<Error>();
 
   useEffect(() => {
-    loadHandles().catch(console.error);
+    loadHandles().catch(e => {
+      if (e instanceof Error) {
+        setError(e);
+      }
+    });
   }, [publisher]);
 
   async function loadHandles() {
@@ -27,10 +33,11 @@ export default function ListHandles() {
       {handles.length === 0 && (
         <FormattedMessage
           defaultMessage="It looks like you dont have any, check {link} to buy one!"
+          id="mErPop"
           values={{
             link: (
               <Link to="/nostr-address">
-                <FormattedMessage defaultMessage="Buy Handle" />
+                <FormattedMessage defaultMessage="Buy Handle" id="5oTnfy" />
               </Link>
             ),
           }}
@@ -51,15 +58,16 @@ export default function ListHandles() {
                 state: a,
               })
             }>
-            <FormattedMessage defaultMessage="Manage" />
+            <FormattedMessage defaultMessage="Manage" id="0Azlrb" />
           </button>
         </div>
       ))}
       {handles.length > 0 && (
         <button type="button" onClick={() => navigate("/nostr-address")}>
-          <FormattedMessage defaultMessage="Buy Handle" />
+          <FormattedMessage defaultMessage="Buy Handle" id="5oTnfy" />
         </button>
       )}
+      {error && <ErrorOrOffline error={error} onRetry={loadHandles} />}
     </>
   );
 }

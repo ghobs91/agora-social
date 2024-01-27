@@ -1,8 +1,9 @@
 {
   "name": "@snort/system-react",
-  "version": "1.0.19",
+  "version": "1.2.0",
   "description": "React hooks for @snort/system",
   "main": "dist/index.js",
+  "module": "src/index.ts",
   "types": "dist/index.d.ts",
   "repository": "https://git.v0l.io/Kieran/snort",
   "author": "Kieran",
@@ -15,8 +16,8 @@
     "dist"
   ],
   "dependencies": {
-    "@snort/shared": "^1.0.8",
-    "@snort/system": "^1.0.22",
+    "@snort/shared": "^1.0.11",
+    "@snort/system": "^1.2.0",
     "react": "^18.2.0"
   },
   "devDependencies": {

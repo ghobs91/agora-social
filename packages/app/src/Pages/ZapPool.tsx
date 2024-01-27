@@ -1,44 +1,31 @@
 import "./ZapPool.css";
 
+import { useUserProfile } from "@snort/system-react";
 import { useMemo, useSyncExternalStore } from "react";
 import { FormattedMessage, FormattedNumber } from "react-intl";
-import { useUserProfile } from "@snort/system-react";
 
-import { SnortPubKey } from "Const";
-import ProfilePreview from "Element/User/ProfilePreview";
-import useLogin from "Hooks/useLogin";
-import { UploaderServices } from "Upload";
-import { bech32ToHex, getRelayName, unwrap } from "SnortUtils";
-import { ZapPoolController, ZapPoolRecipient, ZapPoolRecipientType } from "ZapPoolController";
-import AsyncButton from "Element/AsyncButton";
-import { useWallet } from "Wallet";
-import useEventPublisher from "Hooks/useEventPublisher";
+import AsyncButton from "@/Components/Button/AsyncButton";
+import ProfilePreview from "@/Components/User/ProfilePreview";
+import useEventPublisher from "@/Hooks/useEventPublisher";
+import useLogin from "@/Hooks/useLogin";
+import { bech32ToHex, getRelayName, trackEvent, unwrap } from "@/Utils";
+import { SnortPubKey } from "@/Utils/Const";
+import { UploaderServices } from "@/Utils/Upload";
+import { ZapPoolController, ZapPoolRecipient, ZapPoolRecipientType } from "@/Utils/ZapPoolController";
+import { useWallet } from "@/Wallet";
 
 const DataProviders = [
   {
     name: "nostr.band",
     owner: bech32ToHex("npub1sx9rnd03vs34lp39fvfv5krwlnxpl90f3dzuk8y3cuwutk2gdhdqjz6g8m"),
   },
-  {
-    name: "semisol.dev",
-    owner: bech32ToHex("npub12262qa4uhw7u8gdwlgmntqtv7aye8vdcmvszkqwgs0zchel6mz7s6cgrkj"),
-  },
-  {
-    name: "nostr.watch",
-    owner: bech32ToHex("npub1uac67zc9er54ln0kl6e4qp2y6ta3enfcg7ywnayshvlw9r5w6ehsqq99rx"),
-  },
-  {
-    name: "nostr.directory",
-    owner: bech32ToHex("npub1teawtzxh6y02cnp9jphxm2q8u6xxfx85nguwg6ftuksgjctvavvqnsgq5u"),
-  },
 ];
 
-function ZapTarget({ target }: { target: ZapPoolRecipient }) {
-  if (!ZapPoolController) return;
+function ZapPoolTargetInner({ target }: { target: ZapPoolRecipient }) {
   const login = useLogin();
   const profile = useUserProfile(target.pubkey);
   const hasAddress = profile?.lud16 || profile?.lud06;
-  const defaultZapMount = Math.ceil(login.preferences.defaultZapAmount * (target.split / 100));
+  const defaultZapMount = Math.ceil(login.appData.item.preferences.defaultZapAmount * (target.split / 100));
   return (
     <ProfilePreview
       pubkey={target.pubkey}
@@ -47,12 +34,13 @@ function ZapTarget({ target }: { target: ZapPoolRecipient }) {
           <div>
             <div>
               <FormattedNumber value={target.split} />% (
-              <FormattedMessage defaultMessage="{n} sats" values={{ n: defaultZapMount }} />)
+              <FormattedMessage defaultMessage="{n} sats" id="CsCUYo" values={{ n: defaultZapMount }} />)
             </div>
             <input
               type="range"
               min={0}
               max={100}
+              step={0.5}
               value={target.split}
               onChange={e =>
                 ZapPoolController?.set({
@@ -63,15 +51,21 @@ function ZapTarget({ target }: { target: ZapPoolRecipient }) {
             />
           </div>
         ) : (
-          <FormattedMessage defaultMessage="No lightning address" />
+          <FormattedMessage defaultMessage="No lightning address" id="JPFYIM" />
         )
       }
     />
   );
 }
 
-export default function ZapPoolPage() {
-  if (!ZapPoolController) return;
+export function ZapPoolTarget({ target }: { target: ZapPoolRecipient }) {
+  if (!ZapPoolController) {
+    return null;
+  }
+  return <ZapPoolTargetInner target={target} />;
+}
+
+function ZapPoolPageInner() {
   const login = useLogin();
   const { system } = useEventPublisher();
   const zapPool = useSyncExternalStore(
@@ -81,14 +75,15 @@ export default function ZapPoolPage() {
   const { wallet } = useWallet();
 
   const relayConnections = useMemo(() => {
-    return system.Sockets.map(a => {
-      if (a.info?.pubkey && !a.ephemeral) {
-        return {
-          address: a.address,
-          pubkey: a.info.pubkey,
-        };
-      }
-    })
+    return [...system.pool]
+      .map(([, a]) => {
+        if (a.Info?.pubkey && !a.Ephemeral) {
+          return {
+            address: a.Address,
+            pubkey: a.Info.pubkey,
+          };
+        }
+      })
       .filter(a => a !== undefined)
       .map(unwrap);
   }, [login.relays]);
@@ -97,21 +92,28 @@ export default function ZapPoolPage() {
   return (
     <div className="zap-pool main-content p">
       <h1>
-        <FormattedMessage defaultMessage="Zap Pool" />
+        <FormattedMessage defaultMessage="Zap Pool" id="i/dBAR" />
       </h1>
       <p>
-        <FormattedMessage defaultMessage="Fund the services that you use by splitting a portion of all your zaps into a pool of funds!" />
+        <FormattedMessage
+          defaultMessage="Fund the services that you use by splitting a portion of all your zaps into a pool of funds!"
+          id="x/Fx2P"
+        />
       </p>
       <p>
-        <FormattedMessage defaultMessage="Zap Pool only works if you use one of the supported wallet connections (WebLN, LNC, LNDHub or Nostr Wallet Connect)" />
+        <FormattedMessage
+          defaultMessage="Zap Pool only works if you use one of the supported wallet connections (WebLN, LNC, LNDHub or Nostr Wallet Connect)"
+          id="QWhotP"
+        />
       </p>
       <p>
         <FormattedMessage
           defaultMessage="Your default zap amount is {number} sats, example values are calculated from this."
+          id="Xopqkl"
           values={{
             number: (
               <b>
-                <FormattedNumber value={login.preferences.defaultZapAmount} />
+                <FormattedNumber value={login.appData.item.preferences.defaultZapAmount} />
               </b>
             ),
           }}
@@ -120,15 +122,18 @@ export default function ZapPoolPage() {
       <p>
         <FormattedMessage
           defaultMessage="A single zap of {nIn} sats will allocate {nOut} sats to the zap pool."
+          id="eSzf2G"
           values={{
             nIn: (
               <b>
-                <FormattedNumber value={login.preferences.defaultZapAmount} />
+                <FormattedNumber value={login.appData.item.preferences.defaultZapAmount} />
               </b>
             ),
             nOut: (
               <b>
-                <FormattedNumber value={ZapPoolController.calcAllocation(login.preferences.defaultZapAmount)} />
+                <FormattedNumber
+                  value={ZapPoolController?.calcAllocation(login.appData.item.preferences.defaultZapAmount) ?? 0}
+                />
               </b>
             ),
           }}
@@ -137,6 +142,7 @@ export default function ZapPoolPage() {
       <p>
         <FormattedMessage
           defaultMessage="You currently have {number} sats in your zap pool."
+          id="Qxv0B2"
           values={{
             number: (
               <b>
@@ -148,13 +154,17 @@ export default function ZapPoolPage() {
       </p>
       <p>
         {wallet && (
-          <AsyncButton onClick={() => ZapPoolController?.payout(wallet)}>
-            <FormattedMessage defaultMessage="Payout Now" />
+          <AsyncButton
+            onClick={async () => {
+              trackEvent("ZapPool", { manual: true });
+              await ZapPoolController?.payout(wallet);
+            }}>
+            <FormattedMessage defaultMessage="Payout Now" id="+PzQ9Y" />
           </AsyncButton>
         )}
       </p>
       <div>
-        <ZapTarget
+        <ZapPoolTarget
           target={
             zapPool.find(b => b.pubkey === bech32ToHex(SnortPubKey) && b.type === ZapPoolRecipientType.Generic) ?? {
               type: ZapPoolRecipientType.Generic,
@@ -166,12 +176,12 @@ export default function ZapPoolPage() {
         />
       </div>
       <h3>
-        <FormattedMessage defaultMessage="Relays" />
+        <FormattedMessage defaultMessage="Relays" id="RoOyAh" />
       </h3>
       {relayConnections.map(a => (
-        <div>
+        <div key={a.address}>
           <h4>{getRelayName(a.address)}</h4>
-          <ZapTarget
+          <ZapPoolTarget
             target={
               zapPool.find(b => b.pubkey === a.pubkey && b.type === ZapPoolRecipientType.Relay) ?? {
                 type: ZapPoolRecipientType.Relay,
@@ -184,12 +194,12 @@ export default function ZapPoolPage() {
         </div>
       ))}
       <h3>
-        <FormattedMessage defaultMessage="File hosts" />
+        <FormattedMessage defaultMessage="File hosts" id="XICsE8" />
       </h3>
       {UploaderServices.map(a => (
-        <div>
+        <div key={a.name}>
           <h4>{a.name}</h4>
-          <ZapTarget
+          <ZapPoolTarget
             target={
               zapPool.find(b => b.pubkey === a.owner && b.type === ZapPoolRecipientType.FileHost) ?? {
                 type: ZapPoolRecipientType.FileHost,
@@ -202,12 +212,12 @@ export default function ZapPoolPage() {
         </div>
       ))}
       <h3>
-        <FormattedMessage defaultMessage="Data Providers" />
+        <FormattedMessage defaultMessage="Data Providers" id="ELbg9p" />
       </h3>
       {DataProviders.map(a => (
-        <div>
+        <div key={a.name}>
           <h4>{a.name}</h4>
-          <ZapTarget
+          <ZapPoolTarget
             target={
               zapPool.find(b => b.pubkey === a.owner && b.type === ZapPoolRecipientType.DataProvider) ?? {
                 type: ZapPoolRecipientType.DataProvider,
@@ -221,4 +231,11 @@ export default function ZapPoolPage() {
       ))}
     </div>
   );
+}
+
+export default function ZapPoolPage() {
+  if (!ZapPoolController) {
+    return null;
+  }
+  return <ZapPoolPageInner />;
 }

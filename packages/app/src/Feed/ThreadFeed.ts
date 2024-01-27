@@ -1,8 +1,6 @@
+import { EventExt, EventKind, NostrLink, RequestBuilder } from "@snort/system";
+import { useReactions, useRequestBuilder } from "@snort/system-react";
 import { useEffect, useMemo, useState } from "react";
-import { EventKind, NostrLink, RequestBuilder, NoteCollection, EventExt } from "@snort/system";
-import { useRequestBuilder } from "@snort/system-react";
-
-import { useReactions } from "./Reactions";
 
 export default function useThreadFeed(link: NostrLink) {
   const [root, setRoot] = useState<NostrLink>();
@@ -32,11 +30,11 @@ export default function useThreadFeed(link: NostrLink) {
     return sub;
   }, [allEvents.length]);
 
-  const store = useRequestBuilder(NoteCollection, sub);
+  const store = useRequestBuilder(sub);
 
   useEffect(() => {
-    if (store.data) {
-      const links = store.data
+    if (store) {
+      const links = store
         .map(a => [
           NostrLink.fromEvent(a),
           ...a.tags.filter(a => a[0] === "e" || a[0] === "a").map(v => NostrLink.fromTag(v)),
@@ -44,7 +42,7 @@ export default function useThreadFeed(link: NostrLink) {
         .flat();
       setAllEvents(links);
 
-      const current = store.data.find(a => link.matchesEvent(a));
+      const current = store.find(a => link.matchesEvent(a));
       if (current) {
         const t = EventExt.extractThread(current);
         if (t) {
@@ -62,12 +60,12 @@ export default function useThreadFeed(link: NostrLink) {
         }
       }
     }
-  }, [store.data?.length]);
+  }, [store?.length]);
 
   const reactions = useReactions(`thread:${link.id.slice(0, 12)}:reactions`, [link, ...allEvents]);
 
   return {
-    thread: store.data ?? [],
-    reactions: reactions.data ?? [],
+    thread: store ?? [],
+    reactions: reactions ?? [],
   };
 }

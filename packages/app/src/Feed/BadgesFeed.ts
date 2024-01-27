@@ -1,8 +1,8 @@
-import { useMemo } from "react";
-import { EventKind, HexKey, Lists, RequestBuilder, ReplaceableNoteStore, NoteCollection } from "@snort/system";
+import { EventKind, HexKey, RequestBuilder } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
+import { useMemo } from "react";
 
-import { unwrap, findTag, chunks } from "SnortUtils";
+import { chunks, findTag, unwrap } from "@/Utils";
 
 type BadgeAwards = {
   pubkeys: string[];
@@ -13,18 +13,15 @@ export default function useProfileBadges(pubkey?: HexKey) {
   const sub = useMemo(() => {
     if (!pubkey) return null;
     const b = new RequestBuilder(`badges:${pubkey.slice(0, 12)}`);
-    b.withFilter().kinds([EventKind.ProfileBadges]).tag("d", [Lists.Badges]).authors([pubkey]);
+    b.withFilter().kinds([EventKind.ProfileBadges]).tag("d", ["profile_badges"]).authors([pubkey]);
     return b;
   }, [pubkey]);
 
-  const profileBadges = useRequestBuilder(ReplaceableNoteStore, sub);
+  const profileBadges = useRequestBuilder(sub);
 
   const profile = useMemo(() => {
-    if (profileBadges.data) {
-      return chunks(
-        profileBadges.data.tags.filter(t => t[0] === "a" || t[0] === "e"),
-        2,
-      ).reduce((acc, [a, e]) => {
+    if (profileBadges) {
+      return chunks(profileBadges[0]?.tags.filter(t => t[0] === "a" || t[0] === "e") ?? [], 2).reduce((acc, [a, e]) => {
         return {
           ...acc,
           [e[1]]: a[1],
@@ -57,11 +54,11 @@ export default function useProfileBadges(pubkey?: HexKey) {
     return b;
   }, [profile, ds]);
 
-  const awards = useRequestBuilder(NoteCollection, awardsSub);
+  const awards = useRequestBuilder(awardsSub);
 
   const result = useMemo(() => {
-    if (awards.data) {
-      return awards.data
+    if (awards) {
+      return awards
         .map((award, _, arr) => {
           const [, pubkey, d] =
             award.tags
