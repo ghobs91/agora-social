@@ -64,9 +64,10 @@ declare const CONFIG: {
   };
   defaultPreferences: {
     hideMutedNotes: boolean;
+    defaultRootTab: "following" | "for-you";
   };
   signUp: {
-    moderation: boolean;
+    quickStart: boolean;
     defaultFollows: Array<string>;
   };
   media: {

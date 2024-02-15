@@ -93,6 +93,10 @@
   "0yO7wF": {
     "defaultMessage": "{n} secs"
   },
+  "0zASjL": {
+    "defaultMessage": "Go",
+    "description": "Button text after entering username in quick signup"
+  },
   "1H4Keq": {
     "defaultMessage": "{n} users"
   },
@@ -773,9 +777,6 @@
   "O3Jz4E": {
     "defaultMessage": "Use your invite code to earn sats!"
   },
-  "O8Z8t9": {
-    "defaultMessage": "Show More"
-  },
   "OEW7yJ": {
     "defaultMessage": "Zaps"
   },
@@ -926,6 +927,9 @@
   },
   "Tpy00S": {
     "defaultMessage": "People"
+  },
+  "TvKqBp": {
+    "defaultMessage": "liked"
   },
   "TwyMau": {
     "defaultMessage": "Account"
@@ -1708,6 +1712,9 @@
   },
   "x82IOl": {
     "defaultMessage": "Mute"
+  },
+  "xEjBS7": {
+    "defaultMessage": "For you"
   },
   "xIcAOU": {
     "defaultMessage": "Votes by {type}"

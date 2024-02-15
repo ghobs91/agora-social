@@ -4,17 +4,18 @@ import { unwrap } from "@snort/shared";
 import { NostrEvent, NostrLink, TaggedNostrEvent } from "@snort/system";
 import { lazy, Suspense, useEffect, useMemo } from "react";
 
-import { ShowMoreInView } from "@/Components/Event/ShowMore";
+import { AutoLoadMore } from "@/Components/Event/LoadMore";
 import PageSpinner from "@/Components/PageSpinner";
 import { useNotificationsView } from "@/Feed/WorkerRelayView";
 import useLogin from "@/Hooks/useLogin";
 import useModeration from "@/Hooks/useModeration";
-import { orderDescending } from "@/Utils";
 import { markNotificationsRead } from "@/Utils/Login";
 
 import { getNotificationContext } from "./getNotificationContext";
 import { NotificationGroup } from "./NotificationGroup";
 const NotificationGraph = lazy(() => import("@/Pages/Notifications/NotificationChart"));
+
+import ScrollToTop from "@/Components/ScrollToTop";
 
 export default function NotificationsPage({ onClick }: { onClick?: (link: NostrLink) => void }) {
   const login = useLogin();
@@ -33,9 +34,7 @@ export default function NotificationsPage({ onClick }: { onClick?: (link: NostrL
   };
 
   const myNotifications = useMemo(() => {
-    return orderDescending([...notifications]).filter(
-      a => !isMuted(a.pubkey) && a.tags.some(b => b[0] === "p" && b[1] === login.publicKey),
-    );
+    return notifications.filter(a => !isMuted(a.pubkey) && a.tags.some(b => b[0] === "p" && b[1] === login.publicKey));
   }, [notifications, login.publicKey]);
 
   const timeGrouped = useMemo(() => {
@@ -54,6 +53,7 @@ export default function NotificationsPage({ onClick }: { onClick?: (link: NostrL
 
   return (
     <>
+      <ScrollToTop />
       <div className="main-content">
         {CONFIG.features.notificationGraph && (
           <Suspense fallback={<PageSpinner />}>
@@ -63,7 +63,7 @@ export default function NotificationsPage({ onClick }: { onClick?: (link: NostrL
         {login.publicKey &&
           [...timeGrouped.entries()].map(([k, g]) => <NotificationGroup key={k} evs={g} onClick={onClick} />)}
 
-        <ShowMoreInView onClick={() => {}} />
+        <AutoLoadMore onClick={() => {}} />
       </div>
     </>
   );
