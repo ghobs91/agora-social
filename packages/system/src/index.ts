@@ -2,7 +2,8 @@ import { RelaySettings } from "./connection";
 import { RequestBuilder } from "./request-builder";
 import { NostrEvent, OkResponse, ReqFilter, TaggedNostrEvent } from "./nostr";
 import { ProfileLoaderService } from "./profile-cache";
-import { AuthorsRelaysCache, RelayMetadataLoader } from "./outbox-model";
+import { AuthorsRelaysCache } from "./outbox";
+import { RelayMetadataLoader } from "outbox/relay-loader";
 import { Optimizer } from "./query-optimizer";
 import { base64 } from "@scure/base";
 import { CachedTable } from "@snort/shared";
@@ -10,6 +11,8 @@ import { ConnectionPool } from "./connection-pool";
 import EventEmitter from "eventemitter3";
 import { QueryEvents } from "./query";
 import { CacheRelay } from "./cache-relay";
+import { RequestRouter } from "./request-router";
+import { UsersFollows } from "./cache/index";
 
 export { NostrSystem } from "./nostr-system";
 export { default as EventKind } from "./event-kind";
@@ -34,7 +37,7 @@ export * from "./pow";
 export * from "./pow-util";
 export * from "./query-optimizer";
 export * from "./encrypted";
-export * from "./outbox-model";
+export * from "./outbox";
 
 export * from "./impl/nip4";
 export * from "./impl/nip44";
@@ -45,8 +48,6 @@ export * from "./cache/index";
 export * from "./cache/user-relays";
 export * from "./cache/user-metadata";
 export * from "./cache/relay-metric";
-
-export * from "./worker/system-worker";
 
 export type QueryLike = {
   get progress(): number;
@@ -67,8 +68,9 @@ export interface SystemInterface {
 
   /**
    * Do some initialization
+   * @param follows A follower list to preload content for
    */
-  Init(): Promise<void>;
+  Init(follows?: Array<string>): Promise<void>;
 
   /**
    * Get an active query by ID
@@ -142,6 +144,11 @@ export interface SystemInterface {
   get eventsCache(): CachedTable<NostrEvent>;
 
   /**
+   * ContactList cache
+   */
+  get userFollowsCache(): CachedTable<UsersFollows>;
+
+  /**
    * Relay loader loads relay metadata for a set of profiles
    */
   get relayLoader(): RelayMetadataLoader;
@@ -155,6 +162,11 @@ export interface SystemInterface {
    * Local relay cache service
    */
   get cacheRelay(): CacheRelay | undefined;
+
+  /**
+   * Request router instance
+   */
+  get requestRouter(): RequestRouter | undefined;
 }
 
 export interface SystemSnapshot {

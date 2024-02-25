@@ -1,7 +1,7 @@
 import debug from "debug";
 import EventEmitter from "eventemitter3";
 
-import { CachedTable } from "@snort/shared";
+import { CachedTable, isHex, unixNowMs } from "@snort/shared";
 import { NostrEvent, TaggedNostrEvent, OkResponse } from "./nostr";
 import { Connection, RelaySettings } from "./connection";
 import { BuiltRawReqFilter, RequestBuilder } from "./request-builder";
@@ -18,13 +18,20 @@ import {
   UsersRelays,
   SnortSystemDb,
   QueryLike,
+  OutboxModel,
+  socialGraphInstance,
+  EventKind,
+  UsersFollows,
+  ID,
 } from ".";
 import { EventsCache } from "./cache/events";
-import { RelayMetadataLoader } from "./outbox-model";
+import { RelayMetadataLoader } from "./outbox";
 import { Optimizer, DefaultOptimizer } from "./query-optimizer";
 import { ConnectionPool, DefaultConnectionPool } from "./connection-pool";
 import { QueryManager } from "./query-manager";
 import { CacheRelay } from "./cache-relay";
+import { RequestRouter } from "./request-router";
+import { UserFollowsCache } from "./cache/user-follows-lists";
 
 export interface NostrSystemEvents {
   change: (state: SystemSnapshot) => void;
@@ -33,15 +40,67 @@ export interface NostrSystemEvents {
   request: (subId: string, filter: BuiltRawReqFilter) => void;
 }
 
-export interface NostrsystemProps {
-  relayCache?: CachedTable<UsersRelays>;
-  profileCache?: CachedTable<CachedMetadata>;
-  relayMetrics?: CachedTable<RelayMetrics>;
-  eventsCache?: CachedTable<NostrEvent>;
-  cacheRelay?: CacheRelay;
-  optimizer?: Optimizer;
+export interface SystemConfig {
+  /**
+   * Users configured relays (via kind 3 or kind 10_002)
+   */
+  relays: CachedTable<UsersRelays>;
+
+  /**
+   * Cache of user profiles, (kind 0)
+   */
+  profiles: CachedTable<CachedMetadata>;
+
+  /**
+   * Cache of relay connection stats
+   */
+  relayMetrics: CachedTable<RelayMetrics>;
+
+  /**
+   * Direct reference events cache
+   */
+  events: CachedTable<NostrEvent>;
+
+  /**
+   * Cache of user ContactLists (kind 3)
+   */
+  contactLists: CachedTable<UsersFollows>;
+
+  /**
+   * Optimized cache relay, usually `@snort/worker-relay`
+   */
+  cachingRelay?: CacheRelay;
+
+  /**
+   * Optimized functions, usually `@snort/system-wasm`
+   */
+  optimizer: Optimizer;
+
+  /**
+   * Dexie database storage, usually `@snort/system-web`
+   */
   db?: SnortSystemDb;
-  checkSigs?: boolean;
+
+  /**
+   * Check event sigs on receive from relays
+   */
+  checkSigs: boolean;
+
+  /**
+   * Automatically handle outbox model
+   *
+   * 1. Fetch relay lists automatically for queried authors
+   * 2. Write to inbox for all `p` tagged users in broadcasting events
+   */
+  automaticOutboxModel: boolean;
+
+  /**
+   * Automatically populate SocialGraph from kind 3 events fetched.
+   *
+   * This is basically free because we always load relays (which includes kind 3 contact lists)
+   * for users when fetching by author.
+   */
+  buildFollowGraph: boolean;
 }
 
 /**
@@ -50,60 +109,115 @@ export interface NostrsystemProps {
 export class NostrSystem extends EventEmitter<NostrSystemEvents> implements SystemInterface {
   #log = debug("System");
   #queryManager: QueryManager;
+  #config: SystemConfig;
 
   /**
    * Storage class for user relay lists
    */
-  readonly relayCache: CachedTable<UsersRelays>;
+  get relayCache(): CachedTable<UsersRelays> {
+    return this.#config.relays;
+  }
 
   /**
    * Storage class for user profiles
    */
-  readonly profileCache: CachedTable<CachedMetadata>;
+  get profileCache(): CachedTable<CachedMetadata> {
+    return this.#config.profiles;
+  }
 
   /**
    * Storage class for relay metrics (connects/disconnects)
    */
-  readonly relayMetricsCache: CachedTable<RelayMetrics>;
-
-  /**
-   * Profile loading service
-   */
-  readonly profileLoader: ProfileLoaderService;
-
-  /**
-   * Relay metrics handler cache
-   */
-  readonly relayMetricsHandler: RelayMetricHandler;
+  get relayMetricsCache(): CachedTable<RelayMetrics> {
+    return this.#config.relayMetrics;
+  }
 
   /**
    * Optimizer instance, contains optimized functions for processing data
    */
-  readonly optimizer: Optimizer;
+  get optimizer(): Optimizer {
+    return this.#config.optimizer;
+  }
 
-  readonly pool: ConnectionPool;
-  readonly eventsCache: CachedTable<NostrEvent>;
-  readonly relayLoader: RelayMetadataLoader;
-  readonly cacheRelay: CacheRelay | undefined;
+  get eventsCache(): CachedTable<NostrEvent> {
+    return this.#config.events;
+  }
+
+  get userFollowsCache(): CachedTable<UsersFollows> {
+    return this.#config.contactLists;
+  }
+
+  get cacheRelay(): CacheRelay | undefined {
+    return this.#config.cachingRelay;
+  }
 
   /**
-   * Check event signatures (reccomended)
+   * Check event signatures (recommended)
    */
-  checkSigs: boolean;
+  get checkSigs(): boolean {
+    return this.#config.checkSigs;
+  }
 
-  constructor(props: NostrsystemProps) {
+  set checkSigs(v: boolean) {
+    this.#config.checkSigs = v;
+  }
+
+  readonly profileLoader: ProfileLoaderService;
+  readonly relayMetricsHandler: RelayMetricHandler;
+  readonly pool: ConnectionPool;
+  readonly relayLoader: RelayMetadataLoader;
+  readonly requestRouter: RequestRouter | undefined;
+
+  constructor(props: Partial<SystemConfig>) {
     super();
-    this.relayCache = props.relayCache ?? new UserRelaysCache(props.db?.userRelays);
-    this.profileCache = props.profileCache ?? new UserProfileCache(props.db?.users);
-    this.relayMetricsCache = props.relayMetrics ?? new RelayMetricCache(props.db?.relayMetrics);
-    this.eventsCache = props.eventsCache ?? new EventsCache(props.db?.events);
-    this.optimizer = props.optimizer ?? DefaultOptimizer;
-    this.cacheRelay = props.cacheRelay;
+    this.#config = {
+      relays: props.relays ?? new UserRelaysCache(props.db?.userRelays),
+      profiles: props.profiles ?? new UserProfileCache(props.db?.users),
+      relayMetrics: props.relayMetrics ?? new RelayMetricCache(props.db?.relayMetrics),
+      events: props.events ?? new EventsCache(props.db?.events),
+      contactLists: props.contactLists ?? new UserFollowsCache(props.db?.contacts),
+      optimizer: props.optimizer ?? DefaultOptimizer,
+      checkSigs: props.checkSigs ?? false,
+      cachingRelay: props.cachingRelay,
+      db: props.db,
+      automaticOutboxModel: props.automaticOutboxModel ?? true,
+      buildFollowGraph: props.buildFollowGraph ?? false,
+    };
 
     this.profileLoader = new ProfileLoaderService(this, this.profileCache);
     this.relayMetricsHandler = new RelayMetricHandler(this.relayMetricsCache);
     this.relayLoader = new RelayMetadataLoader(this, this.relayCache);
-    this.checkSigs = props.checkSigs ?? true;
+
+    // if automatic outbox model, setup request router as OutboxModel
+    if (this.#config.automaticOutboxModel) {
+      this.requestRouter = OutboxModel.fromSystem(this);
+    }
+
+    // Hook on-event when building follow graph
+    if (this.#config.buildFollowGraph) {
+      let evBuf: Array<TaggedNostrEvent> = [];
+      let t: ReturnType<typeof setTimeout> | undefined;
+      this.on("event", (_, ev) => {
+        if (ev.kind === EventKind.ContactList) {
+          // fire&forget update
+          this.userFollowsCache.update({
+            loaded: unixNowMs(),
+            created: ev.created_at,
+            pubkey: ev.pubkey,
+            follows: ev.tags,
+          });
+
+          // buffer social graph updates into 500ms window
+          evBuf.push(ev);
+          if (!t) {
+            t = setTimeout(() => {
+              socialGraphInstance.handleEvent(evBuf);
+              evBuf = [];
+            }, 500);
+          }
+        }
+      });
+    }
 
     this.pool = new DefaultConnectionPool(this);
     this.#queryManager = new QueryManager(this);
@@ -155,14 +269,30 @@ export class NostrSystem extends EventEmitter<NostrSystemEvents> implements Syst
     this.#queryManager.on("request", (subId: string, f: BuiltRawReqFilter) => this.emit("request", subId, f));
   }
 
-  async Init() {
+  async Init(follows?: Array<string>) {
     const t = [
-      this.relayCache.preload(),
-      this.profileCache.preload(),
-      this.relayMetricsCache.preload(),
-      this.eventsCache.preload(),
+      this.relayCache.preload(follows),
+      this.profileCache.preload(follows),
+      this.relayMetricsCache.preload(follows),
+      this.eventsCache.preload(follows),
+      this.userFollowsCache.preload(follows),
     ];
     await Promise.all(t);
+    await this.PreloadSocialGraph();
+  }
+
+  async PreloadSocialGraph() {
+    // Insert data to socialGraph from cache
+    if (this.#config.buildFollowGraph) {
+      for (const list of this.userFollowsCache.snapshot()) {
+        const user = ID(list.pubkey);
+        for (const fx of list.follows) {
+          if (fx[0] === "p" && fx[1].length === 64) {
+            socialGraphInstance.addFollower(ID(fx[1]), user);
+          }
+        }
+      }
+    }
   }
 
   async ConnectToRelay(address: string, options: RelaySettings) {
@@ -196,7 +326,7 @@ export class NostrSystem extends EventEmitter<NostrSystemEvents> implements Syst
 
   async BroadcastEvent(ev: NostrEvent, cb?: (rsp: OkResponse) => void): Promise<OkResponse[]> {
     this.HandleEvent("*", { ...ev, relays: [] });
-    return await this.pool.broadcast(this, ev, cb);
+    return await this.pool.broadcast(ev, cb);
   }
 
   async WriteOnceToRelay(address: string, ev: NostrEvent): Promise<OkResponse> {
