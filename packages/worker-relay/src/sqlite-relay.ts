@@ -1,12 +1,15 @@
 import sqlite3InitModule, { Database, Sqlite3Static } from "@sqlite.org/sqlite-wasm";
 import { EventEmitter } from "eventemitter3";
 import { EventMetadata, NostrEvent, RelayHandler, RelayHandlerEvents, ReqFilter, unixNowMs } from "./types";
-import debug from "debug";
 import migrate from "./migrations";
+import { debugLog } from "./debug";
+
+// import wasm file directly, this needs to be copied from https://sqlite.org/download.html
+import SqlitePath from "./sqlite3.wasm?url";
 
 export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements RelayHandler {
   #sqlite?: Sqlite3Static;
-  #log = debug("SqliteRelay");
+  #log = (msg: string, ...args: Array<any>) => debugLog("SqliteRelay", msg, ...args);
   db?: Database;
   #seenInserts = new Set<string>();
 
@@ -15,7 +18,16 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
    */
   async init(path: string) {
     if (this.#sqlite) return;
-    this.#sqlite = await sqlite3InitModule();
+    this.#sqlite = await sqlite3InitModule({
+      locateFile: (path, prefix) => {
+        if (path === "sqlite3.wasm") {
+          return SqlitePath;
+        }
+        return prefix + path;
+      },
+      print: msg => this.#log(msg),
+      printErr: msg => this.#log(msg),
+    });
     this.#log(`Got SQLite version: ${this.#sqlite.version.libVersion}`);
     await this.#open(path);
     this.db && migrate(this);
@@ -28,22 +40,13 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
     if (!this.#sqlite) throw new Error("Must call init first");
     if (this.db) return;
 
-    if ("opfs" in this.#sqlite) {
-      try {
-        this.db = new this.#sqlite.oo1.OpfsDb(path, "cw");
-        this.#log(`Opened ${this.db.filename}`);
-        this.db.exec(
-          `PRAGMA cache_size=${
-            32 * 1024
-          }; PRAGMA page_size=8192; PRAGMA journal_mode=MEMORY; PRAGMA temp_store=MEMORY;`,
-        );
-      } catch (e) {
-        // wipe db
-        console.error(e);
-      }
-    } else {
-      throw new Error("OPFS not supported!");
-    }
+    const pool = await this.#sqlite.installOpfsSAHPoolVfs({});
+    this.db = new pool.OpfsSAHPoolDb(path);
+    this.#log(`Opened ${this.db.filename}`);
+    /*this.db.exec(
+      `PRAGMA cache_size=${32 * 1024
+      }; PRAGMA page_size=8192; PRAGMA journal_mode=MEMORY; PRAGMA temp_store=MEMORY;`,
+    );*/
   }
 
   close() {
@@ -240,13 +243,15 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
     }
     let sql = `select ${resultType} from events`;
     const tags = Object.entries(req).filter(([k]) => k.startsWith("#"));
+    let tx = 0;
     for (const [key, values] of tags) {
       const vArray = values as Array<string>;
-      sql += ` inner join tags on events.id = tags.event_id and tags.key = ? and tags.value in (${this.#repeatParams(
+      sql += ` inner join tags t_${tx} on events.id = t_${tx}.event_id and t_${tx}.key = ? and t_${tx}.value in (${this.#repeatParams(
         vArray.length,
       )})`;
       params.push(key.slice(1));
       params.push(...vArray);
+      tx++;
     }
     if (req.search) {
       sql += " inner join search_content on search_content.id = events.id";

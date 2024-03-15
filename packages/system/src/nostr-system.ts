@@ -1,5 +1,5 @@
 import debug from "debug";
-import EventEmitter from "eventemitter3";
+import { EventEmitter } from "eventemitter3";
 
 import { CachedTable, isHex, unixNowMs } from "@snort/shared";
 import { NostrEvent, TaggedNostrEvent, OkResponse } from "./nostr";
@@ -193,6 +193,13 @@ export class NostrSystem extends EventEmitter<NostrSystemEvents> implements Syst
       this.requestRouter = OutboxModel.fromSystem(this);
     }
 
+    // Cache everything
+    if (this.#config.cachingRelay) {
+      this.on("event", async (_, ev) => {
+        await this.#config.cachingRelay?.event(ev);
+      });
+    }
+
     // Hook on-event when building follow graph
     if (this.#config.buildFollowGraph) {
       let evBuf: Array<TaggedNostrEvent> = [];
@@ -287,7 +294,7 @@ export class NostrSystem extends EventEmitter<NostrSystemEvents> implements Syst
       for (const list of this.userFollowsCache.snapshot()) {
         const user = ID(list.pubkey);
         for (const fx of list.follows) {
-          if (fx[0] === "p" && fx[1].length === 64) {
+          if (fx[0] === "p" && fx[1]?.length === 64) {
             socialGraphInstance.addFollower(ID(fx[1]), user);
           }
         }

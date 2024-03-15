@@ -1,20 +1,30 @@
-import {
-  EventMetadata,
-  NostrEvent,
-  OkResponse,
-  ReqCommand,
-  ReqFilter,
-  WorkerMessage,
-  WorkerMessageCommand,
-} from "./types";
+import { EventMetadata, NostrEvent, OkResponse, ReqCommand, WorkerMessage, WorkerMessageCommand } from "./types";
 import { v4 as uuid } from "uuid";
 
 export class WorkerRelayInterface {
   #worker: Worker;
   #commandQueue: Map<string, (v: unknown, ports: ReadonlyArray<MessagePort>) => void> = new Map();
 
-  constructor(path: string) {
-    this.#worker = new Worker(path, { type: "module" });
+  // Command timeout
+  timeout: number = 30_000;
+
+  /**
+   * Interface wrapper for worker relay
+   * @param scriptPath Path to worker script or Worker script object
+   */
+  constructor(scriptPath?: string | URL | Worker) {
+    if (scriptPath instanceof Worker) {
+      this.#worker = scriptPath;
+    } else {
+      const sp = scriptPath ? scriptPath : new URL("@snort/worker-relay/dist/esm/worker.mjs", import.meta.url);
+      this.#worker = new Worker(sp, { type: "module" });
+    }
+    this.#worker.onerror = e => {
+      console.error(e.message, e);
+    };
+    this.#worker.onmessageerror = e => {
+      console.error(e);
+    };
     this.#worker.onmessage = e => {
       const cmd = e.data as WorkerMessage<any>;
       if (cmd.cmd === "reply") {
@@ -25,8 +35,8 @@ export class WorkerRelayInterface {
     };
   }
 
-  async init(path: string) {
-    return await this.#workerRpc<string, boolean>("init", path);
+  async init(databasePath: string) {
+    return await this.#workerRpc<Array<string | undefined>, boolean>("init", [databasePath]);
   }
 
   async event(ev: NostrEvent) {
@@ -61,17 +71,30 @@ export class WorkerRelayInterface {
     return this.#workerRpc<[string, EventMetadata], void>("setEventMetadata", [id, meta]);
   }
 
-  #workerRpc<T, R>(cmd: WorkerMessageCommand, args?: T) {
+  async debug(v: string) {
+    return await this.#workerRpc<string, boolean>("debug", v);
+  }
+
+  async #workerRpc<T, R>(cmd: WorkerMessageCommand, args?: T) {
     const id = uuid();
     const msg = {
       id,
       cmd,
       args,
     } as WorkerMessage<T>;
-    this.#worker.postMessage(msg);
-    return new Promise<R>(resolve => {
+    return await new Promise<R>((resolve, reject) => {
+      this.#worker.postMessage(msg);
+      const t = setTimeout(() => {
+        this.#commandQueue.delete(id);
+        reject(new Error("Timeout"));
+      }, this.timeout);
       this.#commandQueue.set(id, (v, port) => {
-        const cmdReply = v as WorkerMessage<R>;
+        clearTimeout(t);
+        const cmdReply = v as WorkerMessage<R & { error?: any }>;
+        if (cmdReply.args.error) {
+          reject(cmdReply.args.error);
+          return;
+        }
         resolve(cmdReply.args);
       });
     });
