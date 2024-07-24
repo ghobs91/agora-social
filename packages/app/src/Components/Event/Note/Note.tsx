@@ -83,7 +83,7 @@ export function Note(props: NoteProps) {
         <div className="body" onClick={e => goToEvent(e, ev)}>
           <NoteText {...props} translated={translated} showTranslation={showTranslation} />
           {translated && <TranslationInfo translated={translated} setShowTranslation={setShowTranslation} />}
-          {ev.kind === EventKind.Polls && <Poll ev={ev} />}
+          {ev.kind === EventKind.Polls && <Poll ev={ev} zaps={[]} />}
           {optionsMerged.showFooter && (
             <div className="mt-4">
               <NoteFooter ev={ev} replyCount={props.threadChains?.get(chainKey(ev))?.length} />
@@ -149,17 +149,18 @@ function useGoToEvent(props, options) {
 }
 
 function Reaction({ ev }: { ev: TaggedNostrEvent }) {
-  const reactedToTag = ev.tags.find((tag: string[]) => tag[0] === "e");
+  const reactedToTag = ev.tags.findLast(tag => tag[0] === "e");
+  const pTag = ev.tags.findLast(tag => tag[0] === "p");
   if (!reactedToTag?.length) {
     return null;
   }
-  const link = NostrLink.fromTag(reactedToTag);
+  const link = NostrLink.fromTag(reactedToTag, pTag?.[1]);
   return (
     <div className="note card">
       <div className="text-gray-medium font-bold">
         <Username pubkey={ev.pubkey} onLinkVisit={() => {}} />
         <span> </span>
-        <FormattedMessage defaultMessage="liked" id="TvKqBp" />
+        <FormattedMessage defaultMessage="liked" />
       </div>
       <NoteQuote link={link} />
     </div>

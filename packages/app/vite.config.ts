@@ -9,18 +9,19 @@ export default defineConfig({
   plugins: [
     react({
       jsxImportSource: "@welldone-software/why-did-you-render",
+      babel: {
+        configFile: true,
+      },
     }),
     VitePWA({
       strategies: "injectManifest",
+      injectRegister: "script",
       srcDir: "src",
       filename: "service-worker.ts",
+      registerType: "autoUpdate",
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: "module",
-      },
-      workbox: {
-        globPatterns: ["**/*.{js,html,wasm,woff,woff2,ttf,svg,png,jpg,jpeg,webp,ico,json}"],
-        sourcemap: true,
       },
     }),
     visualizer({
@@ -34,6 +35,7 @@ export default defineConfig({
       command: "git describe --always --tags",
       ifMeta: false,
       ifLog: false,
+      ifGlobal: false,
     }),
   ],
   assetsInclude: ["**/*.md", "**/*.wasm"],

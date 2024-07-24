@@ -12,7 +12,8 @@ export type WorkerMessageCommand =
   | "emit-event"
   | "forYouFeed"
   | "setEventMetadata"
-  | "debug";
+  | "debug"
+  | "delete";
 
 export interface WorkerMessage<T> {
   id: string;
@@ -45,7 +46,6 @@ export interface ReqFilter {
   since?: number;
   until?: number;
   limit?: number;
-  ids_only?: boolean;
   [key: string]: Array<string> | Array<number> | string | number | undefined | boolean;
 }
 
@@ -71,6 +71,7 @@ export interface RelayHandler extends EventEmitter<RelayHandlerEvents> {
   count(req: ReqFilter): number;
   summary(): Record<string, number>;
   dump(): Promise<Uint8Array>;
+  delete(req: ReqFilter): Array<string>;
   setEventMetadata(id: string, meta: EventMetadata): void;
 }
 

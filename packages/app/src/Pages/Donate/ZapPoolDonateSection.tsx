@@ -11,7 +11,6 @@ export function ZapPoolDonateSection() {
   if (!CONFIG.features.zapPool) {
     return;
   }
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const zapPool = useSyncExternalStore(
     c => unwrap(ZapPoolController).hook(c),
     () => unwrap(ZapPoolController).snapshot(),
@@ -20,7 +19,7 @@ export function ZapPoolDonateSection() {
   return (
     <>
       <h3>
-        <FormattedMessage defaultMessage="ZapPool" id="pRess9" />
+        <FormattedMessage defaultMessage="ZapPool" />
       </h3>
       <p>
         <FormattedMessage
@@ -30,7 +29,7 @@ export function ZapPoolDonateSection() {
       </p>
       <p>
         <Link to="/zap-pool" className="underline">
-          <FormattedMessage defaultMessage="Configure zap pool" id="kqPQJD" />
+          <FormattedMessage defaultMessage="Configure zap pool" />
         </Link>
       </p>
       <ZapPoolTarget

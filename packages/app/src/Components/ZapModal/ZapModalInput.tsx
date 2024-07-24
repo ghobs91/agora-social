@@ -7,6 +7,7 @@ import messages from "@/Components/messages";
 import { ZapType } from "@/Components/ZapModal/ZapType";
 import { ZapTypeSelector } from "@/Components/ZapModal/ZapTypeSelector";
 import useLogin from "@/Hooks/useLogin";
+import usePreferences from "@/Hooks/usePreferences";
 import { formatShort } from "@/Utils/Number";
 import { Zapper } from "@/Utils/Zapper";
 
@@ -21,10 +22,8 @@ export function ZapModalInput(props: {
   onChange?: (v: SendSatsInputSelection) => void;
   onNextStage: (v: SendSatsInputSelection) => Promise<void>;
 }) {
-  const { defaultZapAmount, readonly } = useLogin(s => ({
-    defaultZapAmount: s.appData.item.preferences.defaultZapAmount,
-    readonly: s.readonly,
-  }));
+  const defaultZapAmount = usePreferences(s => s.defaultZapAmount);
+  const readonly = useLogin(s => s.readonly);
   const { formatMessage } = useIntl();
   const amounts: Record<string, string> = {
     [defaultZapAmount.toString()]: "",
@@ -105,7 +104,7 @@ export function ZapModalInput(props: {
     <div className="flex flex-col g24">
       <div className="flex flex-col g8">
         <h3>
-          <FormattedMessage defaultMessage="Zap amount in sats" id="zcaOTs" />
+          <FormattedMessage defaultMessage="Zap amount in sats" />
         </h3>
         {renderAmounts()}
         {custom()}
@@ -123,7 +122,7 @@ export function ZapModalInput(props: {
       {(amount ?? 0) > 0 && (
         <AsyncButton onClick={() => props.onNextStage(getValue())}>
           <Icon name="zap" />
-          <FormattedMessage defaultMessage="Zap {n} sats" id="8QDesP" values={{ n: formatShort(amount) }} />
+          <FormattedMessage defaultMessage="Zap {n} sats" values={{ n: formatShort(amount) }} />
         </AsyncButton>
       )}
     </div>

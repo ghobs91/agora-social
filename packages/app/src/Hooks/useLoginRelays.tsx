@@ -2,10 +2,10 @@ import { RelaySettings, SystemInterface } from "@snort/system";
 import { useEffect } from "react";
 
 import useEventPublisher from "./useEventPublisher";
-import useLogin from "./useLogin";
+import useRelays from "./useRelays";
 
 export function useLoginRelays() {
-  const relays = useLogin(s => s.relays.item);
+  const relays = useRelays();
   const { system } = useEventPublisher();
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export async function updateRelayConnections(system: SystemInterface, relays: Re
       system.ConnectToRelay(k, v);
     }
     for (const [k, v] of system.pool) {
-      if (!relays[k] && !v.Ephemeral) {
+      if (!relays[k] && !v.ephemeral) {
         system.DisconnectRelay(k);
       }
     }

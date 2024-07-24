@@ -1,9 +1,8 @@
 import "./LongFormText.css";
 
-import { NostrLink, TaggedNostrEvent } from "@snort/system";
-import { useEventReactions, useReactions } from "@snort/system-react";
+import { TaggedNostrEvent } from "@snort/system";
 import classNames from "classnames";
-import React, { CSSProperties, useCallback, useRef, useState } from "react";
+import { CSSProperties, useCallback, useRef, useState } from "react";
 import { FormattedMessage, FormattedNumber } from "react-intl";
 
 import Text from "@/Components/Text/Text";
@@ -32,8 +31,6 @@ export function LongFormText(props: LongFormTextProps) {
   const [reading, setReading] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const related = useReactions("note:reactions", [NostrLink.fromEvent(props.ev)], undefined, false);
-  const { reactions, reposts, zaps } = useEventReactions(NostrLink.fromEvent(props.ev), related);
 
   function previewText() {
     return (
@@ -100,11 +97,7 @@ export function LongFormText(props: LongFormTextProps) {
         e.stopPropagation();
         setShowMore(!showMore);
       }}>
-      {showMore ? (
-        <FormattedMessage defaultMessage="Show less" id="qyJtWy" />
-      ) : (
-        <FormattedMessage defaultMessage="Show more" id="aWpBzj" />
-      )}
+      {showMore ? <FormattedMessage defaultMessage="Show less" /> : <FormattedMessage defaultMessage="Show more" />}
     </a>
   );
 
@@ -114,7 +107,7 @@ export function LongFormText(props: LongFormTextProps) {
   function fullText() {
     return (
       <>
-        <NoteFooter ev={props.ev} reposts={reposts} zaps={zaps} positive={reactions.positive} />
+        <NoteFooter ev={props.ev} />
         <hr />
         <div className="flex g8">
           <div>
@@ -129,12 +122,12 @@ export function LongFormText(props: LongFormTextProps) {
           <div>‧</div>
           {!reading && (
             <div className="pointer" onClick={() => readArticle()}>
-              <FormattedMessage defaultMessage="Listen to this article" id="nihgfo" />
+              <FormattedMessage defaultMessage="Listen to this article" />
             </div>
           )}
           {reading && (
             <div className="pointer" onClick={() => stopReading()}>
-              <FormattedMessage defaultMessage="Stop listening" id="U1aPPi" />
+              <FormattedMessage defaultMessage="Stop listening" />
             </div>
           )}
         </div>
@@ -143,7 +136,7 @@ export function LongFormText(props: LongFormTextProps) {
         <Markdown content={content} tags={props.ev.tags} ref={ref} />
         {shouldTruncate && !showMore && <ToggleShowMore />}
         <hr />
-        <NoteFooter ev={props.ev} reposts={reposts} zaps={zaps} positive={reactions.positive} />
+        <NoteFooter ev={props.ev} />
       </>
     );
   }

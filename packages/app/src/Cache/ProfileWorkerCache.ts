@@ -1,16 +1,15 @@
 import { CachedTable, CacheEvents, removeUndefined, unixNowMs, unwrap } from "@snort/shared";
-import { CachedMetadata, mapEventToProfile, NostrEvent } from "@snort/system";
-import { WorkerRelayInterface } from "@snort/worker-relay";
+import { CachedMetadata, CacheRelay, mapEventToProfile, NostrEvent } from "@snort/system";
 import debug from "debug";
 import { EventEmitter } from "eventemitter3";
 
 export class ProfileCacheRelayWorker extends EventEmitter<CacheEvents> implements CachedTable<CachedMetadata> {
-  #relay: WorkerRelayInterface;
+  #relay: CacheRelay;
   #keys = new Set<string>();
   #cache = new Map<string, CachedMetadata>();
   #log = debug("ProfileCacheRelayWorker");
 
-  constructor(relay: WorkerRelayInterface) {
+  constructor(relay: CacheRelay) {
     super();
     this.#relay = relay;
   }
@@ -27,6 +26,18 @@ export class ProfileCacheRelayWorker extends EventEmitter<CacheEvents> implement
     this.#cache = new Map<string, CachedMetadata>(profiles.map(a => [a.pubkey, unwrap(mapEventToProfile(a))]));
     this.#keys = new Set<string>(this.#cache.keys());
     this.#log(`Loaded %d/%d in %d ms`, this.#cache.size, this.#keys.size, (unixNowMs() - start).toLocaleString());
+  }
+
+  async search(q: string) {
+    const profiles = await this.#relay.query([
+      "REQ",
+      "profiles-search",
+      {
+        kinds: [0],
+        search: q,
+      },
+    ]);
+    return removeUndefined(profiles.map(mapEventToProfile));
   }
 
   keysOnTable(): string[] {

@@ -6,19 +6,19 @@ import { useLocation } from "react-router-dom";
 import useThreadFeed from "@/Feed/ThreadFeed";
 import useModeration from "@/Hooks/useModeration";
 import { chainKey, replyChainKey } from "@/Utils/Thread/ChainKey";
-import { ThreadContext } from "@/Utils/Thread/ThreadContext";
+import { ThreadContext, ThreadContextState } from "@/Utils/Thread/ThreadContext";
 
 export function ThreadContextWrapper({ link, children }: { link: NostrLink; children?: ReactNode }) {
   const location = useLocation();
   const [currentId, setCurrentId] = useState(unwrap(link.toEventTag())[1]);
   const feed = useThreadFeed(link);
-  const { isBlocked } = useModeration();
+  const { isMuted } = useModeration();
 
   const chains = useMemo(() => {
     const chains = new Map<u256, Array<TaggedNostrEvent>>();
-    if (feed.thread) {
-      feed.thread
-        ?.filter(a => !isBlocked(a.pubkey))
+    if (feed) {
+      feed
+        ?.filter(a => !isMuted(a.pubkey))
         .forEach(v => {
           const replyTo = replyChainKey(v);
           if (replyTo) {
@@ -31,33 +31,32 @@ export function ThreadContextWrapper({ link, children }: { link: NostrLink; chil
         });
     }
     return chains;
-  }, [feed.thread]);
+  }, [feed, isMuted]);
 
   // Root is the parent of the current note or the current note if its a root note or the root of the thread
   const root = useMemo(() => {
     const currentNote =
-      feed.thread?.find(a => chainKey(a) === currentId) ??
+      feed?.find(a => chainKey(a) === currentId) ??
       (location.state && "sig" in location.state ? (location.state as TaggedNostrEvent) : undefined);
     if (currentNote) {
       const key = replyChainKey(currentNote);
       if (key) {
-        return feed.thread?.find(a => chainKey(a) === key);
+        return feed?.find(a => chainKey(a) === key);
       } else {
         return currentNote;
       }
     }
-  }, [feed.thread.length, currentId, location]);
+  }, [feed, location.state, currentId]);
 
-  const ctxValue = useMemo<ThreadContext>(() => {
+  const ctxValue = useMemo<ThreadContextState>(() => {
     return {
       current: currentId,
       root,
       chains,
-      reactions: feed.reactions,
-      data: feed.thread,
+      data: feed,
       setCurrent: v => setCurrentId(v),
     };
-  }, [root, chains]);
+  }, [currentId, root, chains, feed]);
 
   return <ThreadContext.Provider value={ctxValue}>{children}</ThreadContext.Provider>;
 }

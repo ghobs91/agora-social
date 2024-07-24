@@ -1,10 +1,10 @@
-import React, { ReactNode } from "react";
+import { LNWallet } from "@snort/wallet";
+import { ReactNode } from "react";
 import { FormattedMessage } from "react-intl";
 
 import Copy from "@/Components/Copy/Copy";
 import QrCode from "@/Components/QrCode";
 import { ZapTargetResult } from "@/Utils/Zapper";
-import { LNWallet } from "@/Wallet";
 
 export function ZapModalInvoice(props: {
   invoice: Array<ZapTargetResult>;
@@ -22,7 +22,7 @@ export function ZapModalInvoice(props: {
             <Copy text={v.pr} maxSize={26} className="items-center" />
             <a href={`lightning:${v.pr}`}>
               <button type="button">
-                <FormattedMessage defaultMessage="Open Wallet" id="HbefNb" />
+                <FormattedMessage defaultMessage="Open Wallet" />
               </button>
             </a>
           </div>

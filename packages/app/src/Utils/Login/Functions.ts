@@ -16,54 +16,11 @@ import { GiftsCache } from "@/Cache";
 import SnortApi from "@/External/SnortApi";
 import { bech32ToHex, dedupeById, deleteRefCode, getCountry, sanitizeRelayUrl, unwrap } from "@/Utils";
 import { Blasters } from "@/Utils/Const";
-import { LoginSession, LoginSessionType, LoginStore, Newest, SnortAppData, UserPreferences } from "@/Utils/Login/index";
+import { LoginSession, LoginSessionType, LoginStore, SnortAppData } from "@/Utils/Login/index";
 import { entropyToPrivateKey, generateBip39Entropy } from "@/Utils/nip6";
 import { SubscriptionEvent } from "@/Utils/Subscription";
 
 import { Nip7OsSigner } from "./Nip7OsSigner";
-
-export function setRelays(state: LoginSession, relays: Record<string, RelaySettings>, createdAt: number) {
-  if (import.meta.env.VITE_SINGLE_RELAY) {
-    state.relays.item = {
-      [import.meta.env.VITE_SINGLE_RELAY]: { read: true, write: true },
-    };
-    state.relays.timestamp = 100;
-    LoginStore.updateSession(state);
-    return;
-  }
-
-  if (state.relays.timestamp >= createdAt) {
-    return;
-  }
-
-  // filter out non-websocket urls
-  const filtered = new Map<string, RelaySettings>();
-  for (const [k, v] of Object.entries(relays)) {
-    if (k.startsWith("wss://") || k.startsWith("ws://")) {
-      const url = sanitizeRelayUrl(k);
-      if (url) {
-        filtered.set(url, v as RelaySettings);
-      }
-    }
-  }
-  state.relays.item = Object.fromEntries(filtered.entries());
-  state.relays.timestamp = createdAt;
-  LoginStore.updateSession(state);
-}
-
-export function removeRelay(state: LoginSession, addr: string) {
-  delete state.relays.item[addr];
-  LoginStore.updateSession(state);
-}
-
-export function updatePreferences(id: string, p: UserPreferences) {
-  updateAppData(id, d => {
-    return {
-      item: { ...d, preferences: p },
-      timestamp: unixNowMs(),
-    };
-  });
-}
 
 export function logout(id: string) {
   LoginStore.removeSession(id);
@@ -150,79 +107,27 @@ export function generateRandomKey() {
   };
 }
 
-export function setTags(state: LoginSession, tags: Array<string>, ts: number) {
-  if (state.tags.timestamp >= ts) {
-    return;
-  }
-  state.tags.item = tags;
-  state.tags.timestamp = ts;
-  LoginStore.updateSession(state);
-}
-
-export function setMuted(state: LoginSession, muted: Array<string>, ts: number) {
-  if (state.muted.timestamp >= ts) {
-    return;
-  }
-  state.muted.item = muted;
-  state.muted.timestamp = ts;
-  LoginStore.updateSession(state);
-}
-
-export function setBlocked(state: LoginSession, blocked: Array<string>, ts: number) {
-  if (state.blocked.timestamp >= ts) {
-    return;
-  }
-  state.blocked.item = blocked;
-  state.blocked.timestamp = ts;
-  LoginStore.updateSession(state);
-}
-
-export function setFollows(id: string, follows: Array<string>, ts: number) {
+export function updateSession(id: string, fn: (state: LoginSession) => void) {
   const session = LoginStore.get(id);
   if (session) {
-    if (ts > session.follows.timestamp) {
-      session.follows.item = follows;
-      session.follows.timestamp = ts;
-      LoginStore.updateSession(session);
-    }
+    fn(session);
+    LoginStore.updateSession(session);
   }
 }
 
-export function setPinned(state: LoginSession, pinned: Array<string>, ts: number) {
-  if (state.pinned.timestamp >= ts) {
-    return;
-  }
-  state.pinned.item = pinned;
-  state.pinned.timestamp = ts;
+export async function setAppData(state: LoginSession, data: SnortAppData) {
+  const pub = LoginStore.getPublisher(state.id);
+  if (!pub) return;
+
+  await state.state.setAppData(data);
   LoginStore.updateSession(state);
 }
 
-export function setBookmarked(state: LoginSession, bookmarked: Array<string>, ts: number) {
-  if (state.bookmarked.timestamp >= ts) {
-    return;
-  }
-  state.bookmarked.item = bookmarked;
-  state.bookmarked.timestamp = ts;
-  LoginStore.updateSession(state);
-}
-
-export function setAppData(state: LoginSession, data: SnortAppData, ts: number) {
-  if (state.appData.timestamp >= ts) {
-    return;
-  }
-  state.appData.item = data;
-  state.appData.timestamp = ts;
-  LoginStore.updateSession(state);
-}
-
-export function updateAppData(id: string, fn: (data: SnortAppData) => Newest<SnortAppData>) {
+export async function updateAppData(id: string, fn: (data: SnortAppData) => SnortAppData) {
   const session = LoginStore.get(id);
-  if (session) {
-    const next = fn(session.appData.item);
-    if (next.timestamp > session.appData.timestamp) {
-      session.appData = next;
-      LoginStore.updateSession(session);
-    }
+  if (session?.state.appdata) {
+    const next = fn(session.state.appdata);
+    await setAppData(session, next);
   }
 }
 
@@ -247,6 +152,9 @@ export function createPublisher(l: LoginSession) {
       const relayArgs = (l.remoteSignerRelays ?? []).map(a => `relay=${encodeURIComponent(a)}`);
       const inner = new PrivateKeySigner(unwrap(l.privateKeyData as KeyStorage).value);
       const nip46 = new Nip46Signer(`bunker://${unwrap(l.publicKey)}?${[...relayArgs].join("&")}`, inner);
+      nip46.on("oauth", url => {
+        window.open(url, CONFIG.appNameCapitalized, "width=600,height=800,popup=yes");
+      });
       return new EventPublisher(nip46, unwrap(l.publicKey));
     }
     case LoginSessionType.Nip7os: {

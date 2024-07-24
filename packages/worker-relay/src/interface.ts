@@ -1,6 +1,18 @@
 import { EventMetadata, NostrEvent, OkResponse, ReqCommand, WorkerMessage, WorkerMessageCommand } from "./types";
 import { v4 as uuid } from "uuid";
 
+export interface InitAargs {
+  /**
+   * OPFS file path for the database
+   */
+  databasePath: string;
+
+  /**
+   * How many events to insert per batch
+   */
+  insertBatchSize?: number;
+}
+
 export class WorkerRelayInterface {
   #worker: Worker;
   #commandQueue: Map<string, (v: unknown, ports: ReadonlyArray<MessagePort>) => void> = new Map();
@@ -35,8 +47,8 @@ export class WorkerRelayInterface {
     };
   }
 
-  async init(databasePath: string) {
-    return await this.#workerRpc<Array<string | undefined>, boolean>("init", [databasePath]);
+  async init(args: InitAargs) {
+    return await this.#workerRpc<InitAargs, boolean>("init", args);
   }
 
   async event(ev: NostrEvent) {
@@ -49,6 +61,11 @@ export class WorkerRelayInterface {
 
   async count(req: ReqCommand) {
     return await this.#workerRpc<ReqCommand, number>("count", req);
+  }
+
+  async delete(req: ReqCommand) {
+    console.debug("DELETE", req);
+    return await this.#workerRpc<ReqCommand, Array<string>>("delete", req);
   }
 
   async summary() {

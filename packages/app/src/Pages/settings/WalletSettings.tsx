@@ -5,8 +5,9 @@ import { useNavigate } from "react-router-dom";
 import LndLogo from "@/assets/img/lnd-logo.png";
 import AlbyIcon from "@/Components/Icons/Alby";
 import BlueWallet from "@/Components/Icons/BlueWallet";
+//import CashuIcon from "@/Components/Icons/Cashu";
 import Icon from "@/Components/Icons/Icon";
-import NostrIcon from "@/Components/Icons/Nostrich";
+import NWCIcon from "@/Components/Icons/NWC";
 import { getAlbyOAuth } from "@/Pages/settings/wallet/utils";
 
 const WalletRow = (props: {
@@ -47,34 +48,32 @@ const WalletSettings = () => {
   return (
     <>
       <h3>
-        <FormattedMessage defaultMessage="Connect Wallet" id="cg1VJ2" />
+        <FormattedMessage defaultMessage="Connect Wallet" />
       </h3>
       <div className="flex flex-col gap-3 cursor-pointer">
         <WalletRow
-          logo={<NostrIcon width={64} height={64} />}
+          logo={<NWCIcon width={64} height={64} />}
           name="Nostr Wallet Connect"
           url="/settings/wallet/nwc"
-          desc={<FormattedMessage defaultMessage="Native nostr wallet connection" id="cG/bKQ" />}
+          desc={<FormattedMessage defaultMessage="Native nostr wallet connection" />}
         />
         <WalletRow
           logo={<img src={LndLogo} />}
           name="LND via LNC"
           url="/settings/wallet/lnc"
-          desc={
-            <FormattedMessage defaultMessage="Connect to your own LND node with Lightning Node Connect" id="aSGz4J" />
-          }
+          desc={<FormattedMessage defaultMessage="Connect to your own LND node with Lightning Node Connect" />}
         />
         <WalletRow
           logo={<BlueWallet width={64} height={64} />}
           name="LNDHub"
           url="/settings/wallet/lndhub"
-          desc={<FormattedMessage defaultMessage="Generic LNDHub wallet (BTCPayServer / Alby / LNBits)" id="0MndVW" />}
+          desc={<FormattedMessage defaultMessage="Generic LNDHub wallet (BTCPayServer / Alby / LNBits)" />}
         />
         {/*<WalletRow
           logo={<CashuIcon size={64} />}
           name="Cashu"
           url="/settings/wallet/cashu"
-          desc={<FormattedMessage defaultMessage="Cashu mint wallet" id="3natuV" />}
+          desc={<FormattedMessage defaultMessage="Cashu mint wallet"  />}
         />*/}
         {CONFIG.alby && (
           <WalletRow
@@ -85,7 +84,7 @@ const WalletSettings = () => {
               const alby = getAlbyOAuth();
               window.location.href = alby.getAuthUrl();
             }}
-            desc={<FormattedMessage defaultMessage="Alby wallet connection" id="XPB8VV" />}
+            desc={<FormattedMessage defaultMessage="Alby wallet connection" />}
           />
         )}
       </div>

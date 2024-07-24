@@ -6,22 +6,34 @@ import { SettingsMenuComponent } from "@/Pages/settings/Menu/SettingsMenuCompone
 import { SettingsMenuItems } from "../Menu/Menu";
 import { FollowsRelayHealth } from "./follows-relay-health";
 import { PruneFollowList } from "./prune-follows";
+import SyncAccountTool from "./sync-account";
 
 const ToolMenuItems = [
   {
-    title: <FormattedMessage defaultMessage="Follow List" id="CM+Cfj" />,
+    title: <FormattedMessage defaultMessage="Follow List" />,
     items: [
       {
         icon: "trash",
         iconBg: "bg-red-500",
-        message: <FormattedMessage defaultMessage="Prune Follow List" id="hF6IN2" />,
+        message: <FormattedMessage defaultMessage="Prune Follow List" />,
         path: "prune-follows",
       },
       {
         icon: "medical-cross",
         iconBg: "bg-green-800",
-        message: <FormattedMessage defaultMessage="Follows Relay Health" id="XQiFEl" />,
+        message: <FormattedMessage defaultMessage="Follows Relay Health" />,
         path: "follows-relay-health",
+      },
+    ],
+  },
+  {
+    title: <FormattedMessage defaultMessage="Account Data" />,
+    items: [
+      {
+        icon: "repost",
+        iconBg: "bg-blue-800",
+        message: <FormattedMessage defaultMessage="Sync Account" />,
+        path: "sync-account",
       },
     ],
   },
@@ -33,7 +45,7 @@ export const ToolsPages = [
     element: (
       <>
         <h2>
-          <FormattedMessage defaultMessage="Tools" id="nUT0Lv" />
+          <FormattedMessage defaultMessage="Tools" />
         </h2>
         <SettingsMenuComponent menu={ToolMenuItems} />
       </>
@@ -46,6 +58,10 @@ export const ToolsPages = [
   {
     path: "follows-relay-health",
     element: <FollowsRelayHealth />,
+  },
+  {
+    path: "sync-account",
+    element: <SyncAccountTool />,
   },
 ] as Array<RouteObject>;
 

@@ -6,7 +6,7 @@ import { FormattedMessage, FormattedNumber } from "react-intl";
 
 import { CollapsedSection } from "@/Components/Collapsed";
 import ProfilePreview from "@/Components/User/ProfilePreview";
-import useLogin from "@/Hooks/useLogin";
+import useFollowsControls from "@/Hooks/useFollowControls";
 import { getRelayName } from "@/Utils";
 
 export function FollowsRelayHealth({
@@ -19,8 +19,8 @@ export function FollowsRelayHealth({
   missingRelaysActions?: (k: string) => ReactNode;
 }) {
   const system = useContext(SnortContext);
-  const follows = useLogin(s => s.follows);
-  const uniqueFollows = dedupe(follows.item);
+  const { followList: follows } = useFollowsControls();
+  const uniqueFollows = dedupe(follows);
 
   const hasRelays = useMemo(() => {
     return uniqueFollows.filter(a => (system.relayCache.getFromCache(a)?.relays.length ?? 0) > 0);
@@ -39,7 +39,7 @@ export function FollowsRelayHealth({
     <div className="flex flex-col gap-4">
       {(withTitle ?? true) && (
         <div className="text-2xl font-semibold">
-          <FormattedMessage defaultMessage="Follows Relay Health" id="XQiFEl" />
+          <FormattedMessage defaultMessage="Follows Relay Health" />
         </div>
       )}
       <div>
@@ -58,7 +58,7 @@ export function FollowsRelayHealth({
           className="rounded-xl border border-border-color px-3 py-4"
           title={
             <div className="text-lg">
-              <FormattedMessage defaultMessage="Missing Relays" id="4emo2p" />
+              <FormattedMessage defaultMessage="Missing Relays" />
             </div>
           }>
           <div>

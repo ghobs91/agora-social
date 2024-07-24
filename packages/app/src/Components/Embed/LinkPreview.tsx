@@ -1,12 +1,14 @@
 import "./LinkPreview.css";
 
-import { CSSProperties, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { LRUCache } from "typescript-lru-cache";
 
 import { MediaElement } from "@/Components/Embed/MediaElement";
 import Spinner from "@/Components/Icons/Spinner";
 import { LinkPreviewData, NostrServices } from "@/External/NostrServices";
-import useImgProxy from "@/Hooks/useImgProxy";
+
+import { ProxyImg } from "../ProxyImg";
+import GenericPlayer from "./GenericPlayer";
 
 async function fetchUrlPreviewInfo(url: string) {
   const api = new NostrServices("https://nostr.api.v0l.io");
@@ -23,7 +25,6 @@ const cache = new LRUCache<string, LinkPreviewData>({
 
 const LinkPreview = ({ url }: { url: string }) => {
   const [preview, setPreview] = useState<LinkPreviewData | null>(cache.get(url));
-  const { proxy } = useImgProxy();
 
   useEffect(() => {
     (async () => {
@@ -56,8 +57,11 @@ const LinkPreview = ({ url }: { url: string }) => {
       const urlTags = ["og:video:secure_url", "og:video:url", "og:video"];
       const link = preview?.og_tags?.find(a => urlTags.includes(a[0].toLowerCase()))?.[1];
       const videoType = preview?.og_tags?.find(a => a[0].toLowerCase() === "og:video:type")?.[1] ?? "video/mp4";
-      if (link) {
+      if (link && videoType.startsWith("video/")) {
         return <MediaElement url={link} mime={videoType} />;
+      }
+      if (link && videoType.startsWith("text/html") && preview?.image) {
+        return <GenericPlayer url={link} poster={preview?.image} />;
       }
     }
     if (type?.startsWith("image")) {
@@ -69,9 +73,7 @@ const LinkPreview = ({ url }: { url: string }) => {
       }
     }
     if (preview?.image) {
-      const backgroundImage = preview?.image ? `url(${proxy(preview?.image)})` : "";
-      const style = { "--img-url": backgroundImage } as CSSProperties;
-      return <div className="link-preview-image" style={style}></div>;
+      return <ProxyImg src={preview?.image} className="w-full object-cover aspect-video" />;
     }
     return null;
   }

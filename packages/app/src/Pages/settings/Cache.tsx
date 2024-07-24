@@ -1,19 +1,22 @@
 import { FeedCache } from "@snort/shared";
 import { ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { FormattedMessage, FormattedNumber } from "react-intl";
+import { useNavigate } from "react-router-dom";
 
 import { GiftsCache, Relay, RelayMetrics } from "@/Cache";
 import AsyncButton from "@/Components/Button/AsyncButton";
+import useLogin from "@/Hooks/useLogin";
+import { WorkerRelayInterface } from "@snort/worker-relay";
 
 export function CacheSettings() {
   return (
     <div className="flex flex-col g8">
       <h3>
-        <FormattedMessage defaultMessage="Cache" id="DBiVK1" />
+        <FormattedMessage defaultMessage="Cache" />
       </h3>
       <RelayCacheStats />
-      <CacheDetails cache={RelayMetrics} name={<FormattedMessage defaultMessage="Relay Metrics" id="tjpYlr" />} />
-      <CacheDetails cache={GiftsCache} name={<FormattedMessage defaultMessage="Gift Wraps" id="fjAcWo" />} />
+      <CacheDetails cache={RelayMetrics} name={<FormattedMessage defaultMessage="Relay Metrics" />} />
+      <CacheDetails cache={GiftsCache} name={<FormattedMessage defaultMessage="Gift Wraps" />} />
     </div>
   );
 }
@@ -31,7 +34,6 @@ function CacheDetails<T>({ cache, name }: { cache: FeedCache<T>; name: ReactNode
         <small>
           <FormattedMessage
             defaultMessage="{count} ({count2} in memory)"
-            id="geppt8"
             values={{
               count: <FormattedNumber value={cache.keysOnTable().length} />,
               count2: <FormattedNumber value={snapshot.length} />,
@@ -41,7 +43,7 @@ function CacheDetails<T>({ cache, name }: { cache: FeedCache<T>; name: ReactNode
       </div>
       <div>
         <AsyncButton onClick={() => cache.clear()}>
-          <FormattedMessage defaultMessage="Clear" id="/GCoTA" />
+          <FormattedMessage defaultMessage="Clear" />
         </AsyncButton>
       </div>
     </div>
@@ -50,23 +52,41 @@ function CacheDetails<T>({ cache, name }: { cache: FeedCache<T>; name: ReactNode
 
 function RelayCacheStats() {
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [myEvents, setMyEvents] = useState<number>(0);
+  const login = useLogin();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    Relay.summary().then(setCounts);
+    if (Relay instanceof WorkerRelayInterface) {
+      Relay.summary().then(setCounts);
+      if (login.publicKey) {
+        Relay.count(["REQ", "my", { authors: [login.publicKey] }]).then(setMyEvents);
+      }
+    }
   }, []);
 
   return (
     <div className="flex justify-between br p bg-superdark">
       <div className="flex flex-col g4 w-64">
-        <FormattedMessage defaultMessage="Worker Relay" id="xSoIUU" />
+        <FormattedMessage defaultMessage="Worker Relay" />
+        {myEvents && (
+          <p>
+            <FormattedMessage
+              defaultMessage="My events: {n}"
+              values={{
+                n: <FormattedNumber value={myEvents} />,
+              }}
+            />
+          </p>
+        )}
         <table className="text-secondary">
           <thead>
             <tr>
               <th className="text-left">
-                <FormattedMessage defaultMessage="Kind" id="e5x8FT" />
+                <FormattedMessage defaultMessage="Kind" />
               </th>
               <th className="text-left">
-                <FormattedMessage defaultMessage="Count" id="Aujn2T" />
+                <FormattedMessage defaultMessage="Count" />
               </th>
             </tr>
           </thead>
@@ -90,7 +110,7 @@ function RelayCacheStats() {
       </div>
       <div className="flex flex-col gap-2">
         <AsyncButton onClick={() => {}}>
-          <FormattedMessage defaultMessage="Clear" id="/GCoTA" />
+          <FormattedMessage defaultMessage="Clear" />
         </AsyncButton>
         <AsyncButton
           onClick={async () => {
@@ -105,7 +125,10 @@ function RelayCacheStats() {
             a.download = "snort.db";
             a.click();
           }}>
-          <FormattedMessage defaultMessage="Dump" id="f2CAxA" />
+          <FormattedMessage defaultMessage="Dump" />
+        </AsyncButton>
+        <AsyncButton onClick={() => navigate("/cache-debug")}>
+          <FormattedMessage defaultMessage="Debug" />
         </AsyncButton>
       </div>
     </div>

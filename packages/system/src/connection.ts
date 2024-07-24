@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
 import debug from "debug";
 import WebSocket from "isomorphic-ws";
-import { unixNowMs, dedupe } from "@snort/shared";
+import { unixNowMs } from "@snort/shared";
 import { EventEmitter } from "eventemitter3";
 
 import { DefaultConnectTimeout } from "./const";
@@ -9,7 +9,8 @@ import { NostrEvent, OkResponse, ReqCommand, ReqFilter, TaggedNostrEvent, u256 }
 import { RelayInfo } from "./relay-info";
 import EventKind from "./event-kind";
 import { EventExt } from "./event-ext";
-import { NegentropyFlow } from "./negentropy/negentropy-flow";
+import { ConnectionType, ConnectionTypeEvents } from "./connection-pool";
+import { ConnectionSyncModule } from "./sync/connection";
 
 /**
  * Relay settings
@@ -17,19 +18,6 @@ import { NegentropyFlow } from "./negentropy/negentropy-flow";
 export interface RelaySettings {
   read: boolean;
   write: boolean;
-}
-
-interface ConnectionEvents {
-  change: () => void;
-  connected: (wasReconnect: boolean) => void;
-  event: (sub: string, e: TaggedNostrEvent) => void;
-  eose: (sub: string) => void;
-  closed: (sub: string, reason: string) => void;
-  disconnect: (code: number) => void;
-  auth: (challenge: string, relay: string, cb: (ev: NostrEvent) => void) => void;
-  notice: (msg: string) => void;
-  have: (sub: string, id: u256) => void; // NIP-114
-  unknownMessage: (obj: Array<any>) => void;
 }
 
 /**
@@ -43,61 +31,88 @@ export type SyncCommand = ["SYNC", id: string, fromSet: Array<TaggedNostrEvent>,
  */
 interface ConnectionQueueItem {
   obj: ReqCommand | SyncCommand;
-  cb: () => void;
+  cb?: () => void;
 }
 
-export class Connection extends EventEmitter<ConnectionEvents> {
+export class Connection extends EventEmitter<ConnectionTypeEvents> implements ConnectionType {
   #log: debug.Debugger;
   #ephemeralCheck?: ReturnType<typeof setInterval>;
   #activity: number = unixNowMs();
   #expectAuth = false;
   #ephemeral: boolean;
+  #closing = false;
+  #downCount = 0;
+  #activeRequests = new Set<string>();
+  #connectStarted = false;
+  #syncModule?: ConnectionSyncModule;
+  #wasUp = false;
 
-  Id: string;
-  readonly Address: string;
+  id: string;
+  readonly address: string;
   Socket: WebSocket | null = null;
 
   PendingRaw: Array<object> = [];
   PendingRequests: Array<ConnectionQueueItem> = [];
-  ActiveRequests = new Set<string>();
 
-  Settings: RelaySettings;
-  Info?: RelayInfo;
+  settings: RelaySettings;
+  info: RelayInfo | undefined;
   ConnectTimeout: number = DefaultConnectTimeout;
   HasStateChange: boolean = true;
-  IsClosed: boolean;
   ReconnectTimer?: ReturnType<typeof setTimeout>;
   EventsCallback: Map<u256, (msg: Array<string | boolean>) => void>;
 
   AwaitingAuth: Map<string, boolean>;
   Authed = false;
-  Down = true;
 
-  constructor(addr: string, options: RelaySettings, ephemeral: boolean = false) {
+  constructor(addr: string, options: RelaySettings, ephemeral: boolean = false, syncModule?: ConnectionSyncModule) {
     super();
-    this.Id = uuid();
-    this.Address = addr;
-    this.Settings = options;
-    this.IsClosed = false;
+    this.id = uuid();
+    this.address = addr;
+    this.settings = options;
     this.EventsCallback = new Map();
     this.AwaitingAuth = new Map();
     this.#ephemeral = ephemeral;
+    this.#syncModule = syncModule;
     this.#log = debug("Connection").extend(addr);
   }
 
-  get Ephemeral() {
+  get ephemeral() {
     return this.#ephemeral;
   }
 
-  set Ephemeral(v: boolean) {
+  set ephemeral(v: boolean) {
     this.#ephemeral = v;
     this.#setupEphemeral();
   }
 
-  async connect() {
+  get isOpen() {
+    return this.Socket?.readyState === WebSocket.OPEN;
+  }
+
+  get isConnecting() {
+    return this.Socket?.readyState === WebSocket.CONNECTING;
+  }
+
+  get isDown() {
+    return this.#downCount > 0;
+  }
+
+  get ActiveRequests() {
+    return [...this.#activeRequests];
+  }
+
+  async connect(awaitOpen = false) {
+    // already connected
+    if (this.isOpen || this.isConnecting) return;
+    // wait for re-connect timer
+    if (this.ReconnectTimer) return;
+    // prevent race condition
+    if (this.#connectStarted) return;
+    this.#connectStarted = true;
+
     try {
-      if (this.Info === undefined) {
-        const u = new URL(this.Address);
+      if (this.info === undefined) {
+        const u = new URL(this.address);
         const rsp = await fetch(`${u.protocol === "wss:" ? "https:" : "http:"}//${u.host}`, {
           headers: {
             accept: "application/nostr+json",
@@ -110,74 +125,91 @@ export class Connection extends EventEmitter<ConnectionEvents> {
               data[k] = undefined;
             }
           }
-          this.Info = data;
+          this.info = data;
         }
       }
     } catch {
       // ignored
     }
 
-    const wasReconnect = this.Socket !== null && !this.IsClosed;
-    if (this.Socket) {
-      this.Id = uuid();
-      this.Socket.onopen = null;
-      this.Socket.onmessage = null;
-      this.Socket.onerror = null;
-      this.Socket.onclose = null;
-      this.Socket = null;
+    try {
+      const wasReconnect = this.Socket !== null;
+      if (this.Socket) {
+        this.id = uuid();
+        if (this.isOpen) {
+          this.Socket.close();
+        }
+        this.Socket.onopen = null;
+        this.Socket.onmessage = null;
+        this.Socket.onerror = null;
+        this.Socket.onclose = null;
+        this.Socket = null;
+      }
+      this.Socket = new WebSocket(this.address);
+      this.Socket.onopen = () => this.#onOpen(wasReconnect);
+      this.Socket.onmessage = e => this.#onMessage(e);
+      this.Socket.onerror = e => this.#onError(e);
+      this.Socket.onclose = e => this.#onClose(e);
+      if (awaitOpen) {
+        await new Promise((resolve, reject) => {
+          this.once("connected", resolve);
+          this.once("disconnect", reject);
+        });
+      }
+    } catch (e) {
+      this.#connectStarted = false;
+      throw e;
     }
-    this.IsClosed = false;
-    this.Socket = new WebSocket(this.Address);
-    this.Socket.onopen = () => this.#onOpen(wasReconnect);
-    this.Socket.onmessage = e => this.#onMessage(e);
-    this.Socket.onerror = e => this.#onError(e);
-    this.Socket.onclose = e => this.#onClose(e);
   }
 
   close() {
-    this.IsClosed = true;
+    this.#closing = true;
     this.Socket?.close();
   }
 
   #onOpen(wasReconnect: boolean) {
-    this.ConnectTimeout = DefaultConnectTimeout;
+    this.#downCount = 0;
+    this.#connectStarted = false;
+    this.#wasUp = true;
     this.#log(`Open!`);
-    this.Down = false;
     this.#setupEphemeral();
     this.emit("connected", wasReconnect);
     this.#sendPendingRaw();
   }
 
   #onClose(e: WebSocket.CloseEvent) {
-    if (this.ReconnectTimer) {
-      clearTimeout(this.ReconnectTimer);
-      this.ReconnectTimer = undefined;
-    }
-
-    // remote server closed the connection, dont re-connect
-    if (e.code === 4000) {
-      this.IsClosed = true;
-      this.#log(`Closed! (Remote)`);
-    } else if (!this.IsClosed) {
-      this.ConnectTimeout = this.ConnectTimeout * 2;
-      this.#log(
-        `Closed (code=${e.code}), trying again in ${(this.ConnectTimeout / 1000).toFixed(0).toLocaleString()} sec`,
-      );
-      this.ReconnectTimer = setTimeout(() => {
-        try {
-          this.connect();
-        } catch {
-          this.emit("disconnect", -1);
-        }
-      }, this.ConnectTimeout);
-      // todo: stats disconnect
+    // if not explicity closed or closed after, start re-connect timer
+    if (this.#wasUp && !this.#closing) {
+      this.#downCount++;
+      this.#reconnectTimer(e);
     } else {
-      this.#log(`Closed!`);
-      this.ReconnectTimer = undefined;
+      this.#log(`Closed: connecting=${this.#connectStarted}, closing=${this.#closing}`);
+      this.#downCount = 0;
+      if (this.ReconnectTimer) {
+        clearTimeout(this.ReconnectTimer);
+        this.ReconnectTimer = undefined;
+      }
     }
 
     this.emit("disconnect", e.code);
     this.#reset();
+  }
+
+  #reconnectTimer(e: WebSocket.CloseEvent) {
+    if (this.ReconnectTimer) {
+      clearTimeout(this.ReconnectTimer);
+      this.ReconnectTimer = undefined;
+    }
+    this.ConnectTimeout = this.ConnectTimeout * 2;
+    this.#log(
+      `Closed (code=${e.code}), trying again in ${(this.ConnectTimeout / 1000).toFixed(0).toLocaleString()} sec`,
+    );
+    this.ReconnectTimer = setTimeout(() => {
+      this.ReconnectTimer = undefined;
+      try {
+        this.connect();
+      } catch {}
+    }, this.ConnectTimeout);
   }
 
   #onMessage(e: WebSocket.MessageEvent) {
@@ -200,7 +232,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
         case "EVENT": {
           const ev = {
             ...(msg[2] as NostrEvent),
-            relays: [this.Address],
+            relays: [this.address],
           } as TaggedNostrEvent;
 
           if (!EventExt.isValid(ev)) {
@@ -209,11 +241,6 @@ export class Connection extends EventEmitter<ConnectionEvents> {
           }
           this.emit("event", msg[1] as string, ev);
           // todo: stats events received
-          break;
-        }
-        // NIP-114: GetMatchingEventIds
-        case "HAVE": {
-          this.emit("have", msg[1] as string, msg[2] as u256);
           break;
         }
         case "EOSE": {
@@ -252,16 +279,17 @@ export class Connection extends EventEmitter<ConnectionEvents> {
   #onError(e: WebSocket.Event) {
     this.#log("Error: %O", e);
     this.emit("change");
+    this.emit("error");
   }
 
   /**
    * Send event on this connection
    */
   sendEvent(e: NostrEvent) {
-    if (!this.Settings.write) {
+    if (!this.settings.write) {
       return;
     }
-    this.send(["EVENT", e]);
+    this.#send(["EVENT", e]);
     // todo: stats events send
     this.emit("change");
   }
@@ -269,9 +297,9 @@ export class Connection extends EventEmitter<ConnectionEvents> {
   /**
    * Send event on this connection and wait for OK response
    */
-  async sendEventAsync(e: NostrEvent, timeout = 5000) {
+  async publish(e: NostrEvent, timeout = 5000) {
     return await new Promise<OkResponse>((resolve, reject) => {
-      if (!this.Settings.write) {
+      if (!this.settings.write) {
         reject(new Error("Not a write relay"));
         return;
       }
@@ -280,7 +308,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
         resolve({
           ok: false,
           id: e.id,
-          relay: this.Address,
+          relay: this.address,
           message: "Duplicate request",
           event: e,
         });
@@ -291,7 +319,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
         resolve({
           ok: false,
           id: e.id,
-          relay: this.Address,
+          relay: this.address,
           message: "Timeout waiting for OK response",
           event: e,
         });
@@ -303,13 +331,13 @@ export class Connection extends EventEmitter<ConnectionEvents> {
         resolve({
           ok: accepted as boolean,
           id: id as string,
-          relay: this.Address,
+          relay: this.address,
           message: message as string | undefined,
           event: e,
         });
       });
 
-      this.send(["EVENT", e]);
+      this.#send(["EVENT", e]);
       // todo: stats events send
       this.emit("change");
     });
@@ -319,45 +347,40 @@ export class Connection extends EventEmitter<ConnectionEvents> {
    * Using relay document to determine if this relay supports a feature
    */
   supportsNip(n: number) {
-    return this.Info?.supported_nips?.some(a => a === n) ?? false;
+    return this.info?.supported_nips?.some(a => a === n) ?? false;
   }
 
   /**
    * Queue or send command to the relay
    * @param cmd The REQ to send to the server
    */
-  queueReq(cmd: ReqCommand | SyncCommand, cbSent: () => void) {
-    const requestKinds = dedupe(
-      cmd
-        .slice(2)
-        .map(a => (a as ReqFilter).kinds ?? [])
-        .flat(),
-    );
+  request(cmd: ReqCommand | SyncCommand, cbSent?: () => void) {
+    const filters = (cmd[0] === "REQ" ? cmd.slice(2) : cmd.slice(3)) as Array<ReqFilter>;
+    const requestKinds = new Set(filters.flatMap(a => a.kinds ?? []));
     const ExpectAuth = [EventKind.DirectMessage, EventKind.GiftWrap];
-    if (ExpectAuth.some(a => requestKinds.includes(a)) && !this.#expectAuth) {
+    if (ExpectAuth.some(a => requestKinds.has(a)) && !this.#expectAuth) {
       this.#expectAuth = true;
       this.#log("Setting expectAuth flag %o", requestKinds);
     }
-    if (this.ActiveRequests.size >= this.#maxSubscriptions) {
+    if (this.#activeRequests.size >= this.#maxSubscriptions) {
       this.PendingRequests.push({
         obj: cmd,
         cb: cbSent,
       });
       this.#log("Queuing: %O", cmd);
     } else {
-      this.ActiveRequests.add(cmd[1]);
       this.#sendRequestCommand({
         obj: cmd,
         cb: cbSent,
       });
-      cbSent();
+      cbSent?.();
     }
     this.emit("change");
   }
 
-  closeReq(id: string) {
-    if (this.ActiveRequests.delete(id)) {
-      this.send(["CLOSE", id]);
+  closeRequest(id: string) {
+    if (this.#activeRequests.delete(id)) {
+      this.#send(["CLOSE", id]);
       this.emit("eose", id);
       this.#sendQueuedRequests();
       this.emit("change");
@@ -365,7 +388,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
   }
 
   #sendQueuedRequests() {
-    const canSend = this.#maxSubscriptions - this.ActiveRequests.size;
+    const canSend = this.#maxSubscriptions - this.#activeRequests.size;
     if (canSend > 0) {
       for (let x = 0; x < canSend; x++) {
         const p = this.PendingRequests.shift();
@@ -380,45 +403,14 @@ export class Connection extends EventEmitter<ConnectionEvents> {
   #sendRequestCommand(item: ConnectionQueueItem) {
     try {
       const cmd = item.obj;
-      if (cmd[0] === "REQ" || cmd[0] === "GET") {
-        this.ActiveRequests.add(cmd[1]);
-        this.send(cmd);
+      if (cmd[0] === "REQ") {
+        this.#activeRequests.add(cmd[1]);
+        this.#send(cmd);
       } else if (cmd[0] === "SYNC") {
-        const [_, id, eventSet, ...filters] = cmd;
-        const lastResortSync = () => {
-          if (filters.some(a => a.since || a.until)) {
-            this.queueReq(["REQ", id, ...filters], item.cb);
-          } else {
-            const latest = eventSet.reduce((acc, v) => (acc = v.created_at > acc ? v.created_at : acc), 0);
-            const newFilters = filters.map(a => ({
-              ...a,
-              since: latest + 1,
-            }));
-            this.queueReq(["REQ", id, ...newFilters], item.cb);
-          }
-        };
-        if (this.Info?.software?.includes("strfry")) {
-          const newFilters = filters.map(a => {
-            if (a.ids_only) {
-              const copy = { ...a };
-              delete copy.ids_only;
-              return copy;
-            }
-            return a;
-          });
-          const neg = new NegentropyFlow(id, this, eventSet, newFilters);
-          neg.once("finish", filters => {
-            if (filters.length > 0) {
-              this.queueReq(["REQ", cmd[1], ...filters], item.cb);
-            }
-          });
-          neg.once("error", () => {
-            lastResortSync();
-          });
-          neg.start();
-        } else {
-          lastResortSync();
+        if (!this.#syncModule) {
+          throw new Error("no sync module");
         }
+        this.#syncModule.sync(this, cmd, item.cb);
       }
     } catch (e) {
       console.error(e);
@@ -427,21 +419,43 @@ export class Connection extends EventEmitter<ConnectionEvents> {
 
   #reset() {
     // reset connection Id on disconnect, for query-tracking
-    this.Id = uuid();
+    this.id = uuid();
     this.#expectAuth = false;
-    this.ActiveRequests.clear();
+    this.#log(
+      "Reset active=%O, pending=%O, raw=%O",
+      [...this.#activeRequests],
+      [...this.PendingRequests],
+      [...this.PendingRaw],
+    );
+    for (const active of this.#activeRequests) {
+      this.emit("closed", active, "connection closed");
+    }
+    for (const pending of this.PendingRequests) {
+      this.emit("closed", pending.obj[1], "connection closed");
+    }
+    for (const raw of this.PendingRaw) {
+      if (Array.isArray(raw) && raw[0] === "REQ") {
+        this.emit("closed", raw[1], "connection closed");
+      }
+    }
+    this.#activeRequests.clear();
     this.PendingRequests = [];
     this.PendingRaw = [];
+
     this.emit("change");
   }
 
-  send(obj: object) {
-    const authPending = !this.Authed && (this.AwaitingAuth.size > 0 || this.Info?.limitation?.auth_required === true);
-    if (!this.Socket || this.Socket?.readyState !== WebSocket.OPEN || authPending) {
+  /**
+   * Send raw json object on wire
+   */
+  sendRaw(obj: object) {
+    this.#send(obj);
+  }
+
+  #send(obj: object) {
+    const authPending = !this.Authed && (this.AwaitingAuth.size > 0 || this.info?.limitation?.auth_required === true);
+    if (!this.isOpen || authPending) {
       this.PendingRaw.push(obj);
-      if (this.Socket?.readyState === WebSocket.CLOSED && this.Ephemeral && this.IsClosed) {
-        this.connect();
-      }
       return false;
     }
 
@@ -474,7 +488,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
     };
     this.AwaitingAuth.set(challenge, true);
     const authEvent = await new Promise<NostrEvent>((resolve, reject) =>
-      this.emit("auth", challenge, this.Address, resolve),
+      this.emit("auth", challenge, this.address, resolve),
     );
     this.#log("Auth result: %o", authEvent);
     if (!authEvent) {
@@ -502,7 +516,7 @@ export class Connection extends EventEmitter<ConnectionEvents> {
   }
 
   get #maxSubscriptions() {
-    return this.Info?.limitation?.max_subscriptions ?? 25;
+    return this.info?.limitation?.max_subscriptions ?? 20;
   }
 
   #setupEphemeral() {
@@ -510,12 +524,16 @@ export class Connection extends EventEmitter<ConnectionEvents> {
       clearInterval(this.#ephemeralCheck);
       this.#ephemeralCheck = undefined;
     }
-    if (this.Ephemeral) {
+    if (this.ephemeral) {
       this.#ephemeralCheck = setInterval(() => {
         const lastActivity = unixNowMs() - this.#activity;
-        if (lastActivity > 30_000 && !this.IsClosed) {
-          if (this.ActiveRequests.size > 0) {
-            this.#log("Inactive connection has %d active requests! %O", this.ActiveRequests.size, this.ActiveRequests);
+        if (lastActivity > 10_000 && !this.#closing) {
+          if (this.#activeRequests.size > 0) {
+            this.#log(
+              "Inactive connection has %d active requests! %O",
+              this.#activeRequests.size,
+              this.#activeRequests,
+            );
           } else {
             this.close();
           }

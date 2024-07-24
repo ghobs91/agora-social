@@ -15,6 +15,7 @@ import ProfileImage from "@/Components/User/ProfileImage";
 import ZapModal from "@/Components/ZapModal/ZapModal";
 import { hexToBech32 } from "@/Utils";
 import { LoginSessionType, LoginStore } from "@/Utils/Login";
+import { ZapTarget } from "@/Utils/Zapper";
 
 const AvatarSection = ({
   user,
@@ -57,12 +58,12 @@ const AvatarSection = ({
           <>
             <Link className="md:hidden" to="/settings">
               <button>
-                <FormattedMessage defaultMessage="Settings" id="D3idYv" />
+                <FormattedMessage defaultMessage="Settings" />
               </button>
             </Link>
             <Link className="hidden md:inline" to="/settings/profile">
               <button>
-                <FormattedMessage defaultMessage="Edit" id="wEQDC6" />
+                <FormattedMessage defaultMessage="Edit" />
               </button>
             </Link>
           </>
@@ -100,8 +101,14 @@ const AvatarSection = ({
   };
 
   return (
-    <div className="avatar-wrapper w-max">
-      <Avatar pubkey={id ?? ""} user={user} onClick={() => setModalImage(user?.picture || "")} className="pointer" />
+    <div className="flex justify-between w-full">
+      <Avatar
+        pubkey={id ?? ""}
+        user={user}
+        onClick={() => setModalImage(user?.picture || "")}
+        className="pointer"
+        size={100}
+      />
       <div className="profile-actions">
         {renderButtons()}
         {!isMe && id && <FollowButton pubkey={id} />}
@@ -113,11 +120,11 @@ const AvatarSection = ({
             ? [
                 {
                   type: "lnurl",
-                  value: lnurl?.lnurl,
+                  value: lnurl.lnurl,
                   weight: 1,
                   name: user?.display_name || user?.name,
-                  zap: { pubkey: id },
-                },
+                  zap: { pubkey: id, anon: false },
+                } as ZapTarget,
               ]
             : undefined
         }

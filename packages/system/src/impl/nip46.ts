@@ -11,6 +11,9 @@ import EventKind from "../event-kind";
 import { EventEmitter } from "eventemitter3";
 
 const NIP46_KIND = 24_133;
+// FIXME add all kinds that Snort signs
+const PERMS =
+  "nip04_encrypt,nip04_decrypt,sign_event:0,sign_event:1,sign_event:3,sign_event:4,sign_event:6,sign_event:7,sign_event:30078";
 
 interface Nip46Metadata {
   name: string;
@@ -34,6 +37,7 @@ interface Nip46Response {
 interface QueueObj {
   resolve: (o: Nip46Response) => void;
   reject: (e: Error) => void;
+  authed?: boolean;
 }
 
 interface Nip46Events {
@@ -72,6 +76,10 @@ export class Nip46Signer extends EventEmitter<Nip46Events> implements EventSigne
 
     this.#relay = unwrap(u.searchParams.get("relay"));
     this.#insideSigner = insideSigner ?? new PrivateKeySigner(secp256k1.utils.randomPrivateKey());
+
+    if (this.isBunker) {
+      this.#remotePubkey = this.#localPubkey;
+    }
   }
 
   get supports(): string[] {
@@ -88,37 +96,36 @@ export class Nip46Signer extends EventEmitter<Nip46Events> implements EventSigne
     }
   }
 
+  get isBunker() {
+    return this.#proto === "bunker:";
+  }
+
   /**
    * Connect to the bunker relay
    * @param autoConnect Start connect flow for pubkey
    * @returns
    */
   async init(autoConnect = true) {
-    const isBunker = this.#proto === "bunker:";
-    if (isBunker) {
-      this.#remotePubkey = this.#localPubkey;
-      this.#localPubkey = await this.#insideSigner.getPubKey();
-    }
+    this.#localPubkey = await this.#insideSigner.getPubKey();
     return await new Promise<void>((resolve, reject) => {
       this.#conn = new Connection(this.#relay, { read: true, write: true });
       this.#conn.on("event", async (sub, e) => {
         await this.#onReply(e);
       });
       this.#conn.on("connected", async () => {
-        this.#conn!.queueReq(
-          [
-            "REQ",
-            "reply",
-            {
-              kinds: [NIP46_KIND],
-              "#p": [this.#localPubkey],
-            },
-          ],
-          () => {},
-        );
+        this.#conn!.request([
+          "REQ",
+          "reply",
+          {
+            kinds: [NIP46_KIND],
+            "#p": [this.#localPubkey],
+            // strfry doesn't always delete ephemeral events
+            since: Math.floor(Date.now() / 1000 - 10),
+          },
+        ]);
 
         if (autoConnect) {
-          if (isBunker) {
+          if (this.isBunker) {
             const rsp = await this.#connect(unwrap(this.#remotePubkey));
             if (rsp.result === "ack") {
               resolve();
@@ -145,7 +152,7 @@ export class Nip46Signer extends EventEmitter<Nip46Events> implements EventSigne
   async close() {
     if (this.#conn) {
       await this.#disconnect();
-      this.#conn.closeReq("reply");
+      this.#conn.closeRequest("reply");
       this.#conn.close();
       this.#conn = undefined;
       this.#didInit = false;
@@ -195,7 +202,7 @@ export class Nip46Signer extends EventEmitter<Nip46Events> implements EventSigne
    */
   async createAccount(name: string, domain: string, email?: string) {
     await this.init(false);
-    const rsp = await this.#rpc("create_account", [name, domain, email ?? ""]);
+    const rsp = await this.#rpc("create_account", [name, domain, email ?? "", PERMS]);
     if (!rsp.error) {
       this.#remotePubkey = rsp.result as string;
     }
@@ -206,10 +213,7 @@ export class Nip46Signer extends EventEmitter<Nip46Events> implements EventSigne
   }
 
   async #connect(pk: string) {
-    const connectParams = [pk];
-    if (this.#token) {
-      connectParams.push(this.#token);
-    }
+    const connectParams = [pk, this.#token ?? "", PERMS];
     return await this.#rpc("connect", connectParams);
   }
 
@@ -241,7 +245,8 @@ export class Nip46Signer extends EventEmitter<Nip46Events> implements EventSigne
     }
 
     if ("result" in reply && reply.result === "auth_url") {
-      this.emit("oauth", reply.error);
+      if (!pending.authed) this.emit("oauth", reply.error);
+      pending.authed = true;
     } else {
       const rx = reply as Nip46Response;
       if (rx.error) {
@@ -286,6 +291,6 @@ export class Nip46Signer extends EventEmitter<Nip46Events> implements EventSigne
 
     this.#log("Send: %O", payload);
     const evCommand = await eb.buildAndSign(this.#insideSigner);
-    await this.#conn.sendEventAsync(evCommand);
+    await this.#conn.publish(evCommand);
   }
 }

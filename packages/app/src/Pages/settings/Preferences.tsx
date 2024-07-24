@@ -1,36 +1,54 @@
+/* eslint-disable max-lines */
 import "./Preferences.css";
 
+import { useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 
+import AsyncButton from "@/Components/Button/AsyncButton";
 import { AllLanguageCodes } from "@/Components/IntlProvider/IntlProviderUtils";
 import { useLocale } from "@/Components/IntlProvider/useLocale";
-import useLogin from "@/Hooks/useLogin";
+import { useAllPreferences } from "@/Hooks/usePreferences";
 import { unwrap } from "@/Utils";
 import { DefaultImgProxy } from "@/Utils/Const";
-import { updatePreferences, UserPreferences } from "@/Utils/Login";
+import { UserPreferences } from "@/Utils/Login";
 
 import messages from "./messages";
 
 const PreferencesPage = () => {
   const { formatMessage } = useIntl();
-  const { id, pref } = useLogin(s => ({ id: s.id, pref: s.appData.item.preferences }));
+  const { preferences, update: updatePerf } = useAllPreferences();
+  const [pref, setPref] = useState<UserPreferences>(preferences);
+  const [error, setError] = useState("");
   const { lang } = useLocale();
+
+  async function update(obj: UserPreferences) {
+    try {
+      setError("");
+      await updatePerf(obj);
+    } catch (e) {
+      console.error(e);
+      setError(formatMessage({ defaultMessage: "Failed to update, please try again", id: "OoZgbB" }));
+    }
+  }
 
   return (
     <div className="preferences flex flex-col g24">
       <h3>
-        <FormattedMessage {...messages.Preferences} />
+        <FormattedMessage defaultMessage="Preferences" />
       </h3>
-
+      <AsyncButton onClick={() => update(pref)}>
+        <FormattedMessage defaultMessage="Save" />
+      </AsyncButton>
+      {error && <b className="warning">{error}</b>}
       <div className="flex justify-between w-max">
         <h4>
-          <FormattedMessage defaultMessage="Language" id="y1Z3or" />
+          <FormattedMessage defaultMessage="Language" />
         </h4>
         <div>
           <select
-            value={lang}
+            value={pref.language ?? lang}
             onChange={e =>
-              updatePreferences(id, {
+              setPref({
                 ...pref,
                 language: e.target.value,
               })
@@ -54,7 +72,7 @@ const PreferencesPage = () => {
           <select
             value={pref.theme}
             onChange={e =>
-              updatePreferences(id, {
+              setPref({
                 ...pref,
                 theme: e.target.value,
               } as UserPreferences)
@@ -79,16 +97,16 @@ const PreferencesPage = () => {
           <select
             value={pref.defaultRootTab}
             onChange={e =>
-              updatePreferences(id, {
+              setPref({
                 ...pref,
                 defaultRootTab: e.target.value,
               } as UserPreferences)
             }>
             <option value="for-you">
-              <FormattedMessage defaultMessage="For you" id="xEjBS7" />
+              <FormattedMessage defaultMessage="For you" />
             </option>
             <option value="following">
-              <FormattedMessage defaultMessage="Notes" id="7+Domh" />
+              <FormattedMessage defaultMessage="Notes" />
             </option>
             <option value="conversations">
               <FormattedMessage {...messages.Conversations} />
@@ -102,17 +120,17 @@ const PreferencesPage = () => {
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Send usage metrics" id="XECMfW" />
+            <FormattedMessage defaultMessage="Send usage metrics" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Send anonymous usage metrics" id="/Xf4UW" />
+            <FormattedMessage defaultMessage="Send anonymous usage metrics" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
             checked={pref.telemetry ?? true}
-            onChange={e => updatePreferences(id, { ...pref, telemetry: e.target.checked })}
+            onChange={e => setPref({ ...pref, telemetry: e.target.checked })}
           />
         </div>
       </div>
@@ -129,7 +147,7 @@ const PreferencesPage = () => {
               className="w-max"
               value={pref.autoLoadMedia}
               onChange={e =>
-                updatePreferences(id, {
+                setPref({
                   ...pref,
                   autoLoadMedia: e.target.value,
                 } as UserPreferences)
@@ -150,44 +168,44 @@ const PreferencesPage = () => {
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Check Signatures" id="1o2BgB" />
+            <FormattedMessage defaultMessage="Check Signatures" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Check all event signatures received from relays" id="UNjfWJ" />
+            <FormattedMessage defaultMessage="Check all event signatures received from relays" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
             checked={pref.checkSigs}
-            onChange={e => updatePreferences(id, { ...pref, checkSigs: e.target.checked })}
+            onChange={e => setPref({ ...pref, checkSigs: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Auto Translate" id="IWz1ta" />
+            <FormattedMessage defaultMessage="Auto Translate" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Automatically translate notes to your local language" id="WmZhfL" />
+            <FormattedMessage defaultMessage="Automatically translate notes to your local language" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
             checked={pref.autoTranslate}
-            onChange={e => updatePreferences(id, { ...pref, autoTranslate: e.target.checked })}
+            onChange={e => setPref({ ...pref, autoTranslate: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Proof of Work" id="grQ+mI" />
+            <FormattedMessage defaultMessage="Proof of Work" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Amount of work to apply to all published events" id="vxwnbh" />
+            <FormattedMessage defaultMessage="Amount of work to apply to all published events" />
           </small>
         </div>
         <div>
@@ -195,71 +213,71 @@ const PreferencesPage = () => {
             type="number"
             defaultValue={pref.pow}
             min={0}
-            onChange={e => updatePreferences(id, { ...pref, pow: parseInt(e.target.value || "0") })}
+            onChange={e => setPref({ ...pref, pow: parseInt(e.target.value || "0") })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <h4>
-          <FormattedMessage defaultMessage="Default Zap amount" id="qMx1sA" />
+          <FormattedMessage defaultMessage="Default Zap amount" />
         </h4>
         <div>
           <input
             type="number"
             defaultValue={pref.defaultZapAmount}
             min={1}
-            onChange={e => updatePreferences(id, { ...pref, defaultZapAmount: parseInt(e.target.value || "0") })}
+            onChange={e => setPref({ ...pref, defaultZapAmount: parseInt(e.target.value || "0") })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Show Badges" id="sKDn4e" />
+            <FormattedMessage defaultMessage="Show Badges" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Show badges on profile pages" id="EQKRE4" />
+            <FormattedMessage defaultMessage="Show badges on profile pages" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
             checked={pref.showBadges ?? false}
-            onChange={e => updatePreferences(id, { ...pref, showBadges: e.target.checked })}
+            onChange={e => setPref({ ...pref, showBadges: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Show Status" id="0uoY11" />
+            <FormattedMessage defaultMessage="Show Status" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Show status messages on profile pages" id="FMfjrl" />
+            <FormattedMessage defaultMessage="Show status messages on profile pages" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
             checked={pref.showStatus ?? true}
-            onChange={e => updatePreferences(id, { ...pref, showStatus: e.target.checked })}
+            onChange={e => setPref({ ...pref, showStatus: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between w-max">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Auto Zap" id="Dh3hbq" />
+            <FormattedMessage defaultMessage="Auto Zap" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Automatically zap every note when loaded" id="D+KzKd" />
+            <FormattedMessage defaultMessage="Automatically zap every note when loaded" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
             checked={pref.autoZap}
-            onChange={e => updatePreferences(id, { ...pref, autoZap: e.target.checked })}
+            onChange={e => setPref({ ...pref, autoZap: e.target.checked })}
           />
         </div>
       </div>
@@ -278,7 +296,7 @@ const PreferencesPage = () => {
               type="checkbox"
               checked={pref.imgProxyConfig !== null}
               onChange={e =>
-                updatePreferences(id, {
+                setPref({
                   ...pref,
                   imgProxyConfig: e.target.checked ? DefaultImgProxy : undefined,
                 })
@@ -302,7 +320,7 @@ const PreferencesPage = () => {
                     description: "Placeholder text for imgproxy url textbox",
                   })}
                   onChange={e =>
-                    updatePreferences(id, {
+                    setPref({
                       ...pref,
                       imgProxyConfig: {
                         ...unwrap(pref.imgProxyConfig),
@@ -327,7 +345,7 @@ const PreferencesPage = () => {
                     description: "Hexidecimal 'key' input for improxy",
                   })}
                   onChange={e =>
-                    updatePreferences(id, {
+                    setPref({
                       ...pref,
                       imgProxyConfig: {
                         ...unwrap(pref.imgProxyConfig),
@@ -352,7 +370,7 @@ const PreferencesPage = () => {
                     description: "Hexidecimal 'salt' input for imgproxy",
                   })}
                   onChange={e =>
-                    updatePreferences(id, {
+                    setPref({
                       ...pref,
                       imgProxyConfig: {
                         ...unwrap(pref.imgProxyConfig),
@@ -379,7 +397,7 @@ const PreferencesPage = () => {
           <input
             type="checkbox"
             checked={pref.enableReactions}
-            onChange={e => updatePreferences(id, { ...pref, enableReactions: e.target.checked })}
+            onChange={e => setPref({ ...pref, enableReactions: e.target.checked })}
           />
         </div>
       </div>
@@ -395,7 +413,7 @@ const PreferencesPage = () => {
           value={pref.reactionEmoji}
           onChange={e => {
             const split = e.target.value.match(/[\p{L}\S]{1}/u);
-            updatePreferences(id, {
+            setPref({
               ...pref,
               reactionEmoji: split?.[0] ?? "",
             });
@@ -415,7 +433,7 @@ const PreferencesPage = () => {
           <input
             type="checkbox"
             checked={pref.confirmReposts}
-            onChange={e => updatePreferences(id, { ...pref, confirmReposts: e.target.checked })}
+            onChange={e => setPref({ ...pref, confirmReposts: e.target.checked })}
           />
         </div>
       </div>
@@ -432,7 +450,7 @@ const PreferencesPage = () => {
           <input
             type="checkbox"
             checked={pref.autoShowLatest}
-            onChange={e => updatePreferences(id, { ...pref, autoShowLatest: e.target.checked })}
+            onChange={e => setPref({ ...pref, autoShowLatest: e.target.checked })}
           />
         </div>
       </div>
@@ -446,11 +464,14 @@ const PreferencesPage = () => {
         <select
           value={pref.fileUploader}
           onChange={e =>
-            updatePreferences(id, {
+            setPref({
               ...pref,
               fileUploader: e.target.value,
             } as UserPreferences)
           }>
+          <option value="nip96">
+            <FormattedMessage defaultMessage="NIP-96" />
+          </option>
           <option value="void.cat">
             void.cat <FormattedMessage {...messages.Default} />
           </option>
@@ -473,27 +494,31 @@ const PreferencesPage = () => {
           <input
             type="checkbox"
             checked={pref.showDebugMenus}
-            onChange={e => updatePreferences(id, { ...pref, showDebugMenus: e.target.checked })}
+            onChange={e => setPref({ ...pref, showDebugMenus: e.target.checked })}
           />
         </div>
       </div>
       <div className="flex justify-between">
         <div className="flex flex-col g8">
           <h4>
-            <FormattedMessage defaultMessage="Hide muted notes" id="9kO0VQ" />
+            <FormattedMessage defaultMessage="Hide muted notes" />
           </h4>
           <small>
-            <FormattedMessage defaultMessage="Muted notes will not be shown" id="sfL/O+" />
+            <FormattedMessage defaultMessage="Muted notes will not be shown" />
           </small>
         </div>
         <div>
           <input
             type="checkbox"
             checked={pref.hideMutedNotes}
-            onChange={e => updatePreferences(id, { ...pref, hideMutedNotes: e.target.checked })}
+            onChange={e => setPref({ ...pref, hideMutedNotes: e.target.checked })}
           />
         </div>
       </div>
+      <AsyncButton onClick={() => update(pref)}>
+        <FormattedMessage defaultMessage="Save" />
+      </AsyncButton>
+      {error && <b className="error">{error}</b>}
     </div>
   );
 };

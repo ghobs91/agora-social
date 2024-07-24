@@ -1,4 +1,5 @@
 import { EventKind, NostrEvent, RequestBuilder, TaggedNostrEvent } from "@snort/system";
+import { WorkerRelayInterface } from "@snort/worker-relay";
 import { memo, useEffect, useMemo, useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { Link, useNavigationType } from "react-router-dom";
@@ -8,14 +9,16 @@ import { DisplayAs, DisplayAsSelector } from "@/Components/Feed/DisplayAsSelecto
 import { TimelineRenderer } from "@/Components/Feed/TimelineRenderer";
 import { TaskList } from "@/Components/Tasks/TaskList";
 import useTimelineFeed, { TimelineFeedOptions, TimelineSubject } from "@/Feed/TimelineFeed";
+import useFollowsControls from "@/Hooks/useFollowControls";
 import useHistoryState from "@/Hooks/useHistoryState";
 import useLogin from "@/Hooks/useLogin";
 import messages from "@/Pages/messages";
 import { System } from "@/system";
 
 const FollowsHint = () => {
-  const { publicKey: pubKey, follows } = useLogin();
-  if (follows.item?.length === 0 && pubKey) {
+  const publicKey = useLogin(s => s.publicKey);
+  const { followList } = useFollowsControls();
+  if (followList.length === 0 && publicKey) {
     return (
       <FormattedMessage
         {...messages.NoFollows}
@@ -29,7 +32,6 @@ const FollowsHint = () => {
       />
     );
   }
-  return null;
 };
 
 let forYouFeed = {
@@ -61,33 +63,36 @@ const getReactedByFollows = (follows: string[]) => {
 
 export const ForYouTab = memo(function ForYouTab() {
   const [notes, setNotes] = useState<NostrEvent[]>(forYouFeed.events);
-  const { feedDisplayAs, follows } = useLogin();
-  const displayAsInitial = feedDisplayAs ?? "list";
+  const login = useLogin(s => ({
+    feedDisplayAs: s.feedDisplayAs,
+    publicKey: s.publicKey,
+    tags: s.state.getList(EventKind.InterestSet),
+  }));
+  const displayAsInitial = login.feedDisplayAs ?? "list";
   const [displayAs, setDisplayAs] = useState<DisplayAs>(displayAsInitial);
-  const { publicKey } = useLogin();
   const navigationType = useNavigationType();
   const [openedAt] = useHistoryState(Math.floor(Date.now() / 1000), "openedAt");
+  const { followList } = useFollowsControls();
 
-  if (!reactionsRequested && publicKey) {
+  if (!reactionsRequested && login.publicKey) {
     reactionsRequested = true;
     // on first load, ask relays for reactions to events by follows
-    getReactedByFollows(follows.item);
+    getReactedByFollows(followList);
   }
 
-  const login = useLogin();
   const subject = useMemo(
     () =>
       ({
         type: "pubkey",
-        items: login.follows.item,
+        items: followList,
         discriminator: login.publicKey?.slice(0, 12),
         extra: rb => {
-          if (login.tags.item.length > 0) {
-            rb.withFilter().kinds([EventKind.TextNote]).tag("t", login.tags.item);
+          if (login.tags.length > 0) {
+            rb.withFilter().kinds([EventKind.TextNote]).tags(login.tags);
           }
         },
       }) as TimelineSubject,
-    [login.follows.item, login.tags.item],
+    [login.publicKey, followList, login.tags],
   );
   // also get "follows" feed so data is loaded from relays and there's a fallback if "for you" feed is empty
   const latestFeed = useTimelineFeed(subject, { method: "TIME_RANGE", now: openedAt } as TimelineFeedOptions);
@@ -101,17 +106,19 @@ export const ForYouTab = memo(function ForYouTab() {
   }, [latestFeed.main, subject]);
 
   const getFeed = () => {
-    if (!publicKey) {
+    if (!login.publicKey) {
       return [];
     }
-    if (!getForYouFeedPromise) {
-      getForYouFeedPromise = Relay.forYouFeed(publicKey);
+    if (!getForYouFeedPromise && Relay instanceof WorkerRelayInterface) {
+      getForYouFeedPromise = Relay.forYouFeed(login.publicKey);
     }
-    getForYouFeedPromise!.then(notes => {
+    getForYouFeedPromise?.then(notes => {
       getForYouFeedPromise = null;
       if (notes.length < 10) {
         setTimeout(() => {
-          getForYouFeedPromise = Relay.forYouFeed(publicKey);
+          if (Relay instanceof WorkerRelayInterface) {
+            getForYouFeedPromise = Relay.forYouFeed(login.publicKey!);
+          }
         }, 1000);
       }
       forYouFeed = {
@@ -164,7 +171,7 @@ export const ForYouTab = memo(function ForYouTab() {
   const frags = useMemo(() => {
     return [
       {
-        events: combinedFeed,
+        events: combinedFeed as Array<TaggedNostrEvent>,
         refTime: Date.now(),
       },
     ];
@@ -175,7 +182,13 @@ export const ForYouTab = memo(function ForYouTab() {
       <DisplayAsSelector activeSelection={displayAs} onSelect={a => setDisplayAs(a)} />
       <FollowsHint />
       <TaskList />
-      <TimelineRenderer frags={frags} latest={[]} displayAs={displayAs} loadMore={() => latestFeed.loadMore()} />
+      <TimelineRenderer
+        frags={frags}
+        latest={[]}
+        displayAs={displayAs}
+        loadMore={() => latestFeed.loadMore()}
+        showLatest={() => {}}
+      />
     </>
   );
 });

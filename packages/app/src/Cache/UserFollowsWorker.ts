@@ -1,16 +1,15 @@
 import { CachedTable, CacheEvents, removeUndefined, unixNowMs, unwrap } from "@snort/shared";
-import { EventKind, NostrEvent, UsersFollows } from "@snort/system";
-import { WorkerRelayInterface } from "@snort/worker-relay";
+import { CacheRelay, EventKind, NostrEvent, UsersFollows } from "@snort/system";
 import debug from "debug";
 import { EventEmitter } from "eventemitter3";
 
 export class UserFollowsWorker extends EventEmitter<CacheEvents> implements CachedTable<UsersFollows> {
-  #relay: WorkerRelayInterface;
+  #relay: CacheRelay;
   #keys = new Set<string>();
   #cache = new Map<string, UsersFollows>();
   #log = debug("UserFollowsWorker");
 
-  constructor(relay: WorkerRelayInterface) {
+  constructor(relay: CacheRelay) {
     super();
     this.#relay = relay;
   }
@@ -27,6 +26,18 @@ export class UserFollowsWorker extends EventEmitter<CacheEvents> implements Cach
     this.#cache = new Map<string, UsersFollows>(profiles.map(a => [a.pubkey, unwrap(mapEventToUserFollows(a))]));
     this.#keys = new Set<string>(this.#cache.keys());
     this.#log(`Loaded %d/%d in %d ms`, this.#cache.size, this.#keys.size, (unixNowMs() - start).toLocaleString());
+  }
+
+  async search(q: string) {
+    const results = await this.#relay.query([
+      "REQ",
+      "contacts-search",
+      {
+        kinds: [3],
+        search: q,
+      },
+    ]);
+    return removeUndefined(results.map(mapEventToUserFollows));
   }
 
   keysOnTable(): string[] {

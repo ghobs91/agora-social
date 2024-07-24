@@ -1,8 +1,8 @@
-import { EventKind, HexKey, NostrPrefix, NostrEvent, EventSigner, PowMiner } from ".";
+import { EventKind, HexKey, NostrPrefix, NostrEvent, EventSigner, PowMiner, NotSignedNostrEvent } from ".";
 import { HashtagRegex, MentionNostrEntityRegex } from "./const";
 import { getPublicKey, jitter, unixNow } from "@snort/shared";
 import { EventExt } from "./event-ext";
-import { tryParseNostrLink } from "./nostr-link";
+import { NostrLink, tryParseNostrLink } from "./nostr-link";
 
 export class EventBuilder {
   #kind?: EventKind;
@@ -13,6 +13,25 @@ export class EventBuilder {
   #pow?: number;
   #powMiner?: PowMiner;
   #jitter?: number;
+
+  get pubkey() {
+    return this.#pubkey;
+  }
+
+  /**
+   * Populate builder with values from link
+   */
+  fromLink(link: NostrLink) {
+    if (link.kind) {
+      this.#kind = link.kind;
+    }
+    if (link.author) {
+      this.#pubkey = link.author;
+    }
+    if (link.type === NostrPrefix.Address && link.id) {
+      this.tag(["d", link.id]);
+    }
+  }
 
   jitter(n: number) {
     this.#jitter = n;

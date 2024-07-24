@@ -6,14 +6,14 @@ import { NoteProps } from "@/Components/Event/EventComponent";
 import { NoteTranslation } from "@/Components/Event/Note/types";
 import Reveal from "@/Components/Event/Reveal";
 import Text from "@/Components/Text/Text";
-import useLogin from "@/Hooks/useLogin";
+import usePreferences from "@/Hooks/usePreferences";
 
 const TEXT_TRUNCATE_LENGTH = 400;
 export const NoteText = memo(function InnerContent(
   props: NoteProps & { translated: NoteTranslation; showTranslation?: boolean },
 ) {
   const { data: ev, options, translated, showTranslation } = props;
-  const appData = useLogin(s => s.appData);
+  const showContentWarningPosts = usePreferences(s => s.showContentWarningPosts);
   const [showMore, setShowMore] = useState(false);
   const body = translated && !translated.skipped && showTranslation ? translated.text : ev?.content ?? "";
   const id = translated && !translated.skipped && showTranslation ? `${ev.id}-translated` : ev.id;
@@ -27,11 +27,7 @@ export const NoteText = memo(function InnerContent(
         e.stopPropagation();
         setShowMore(!showMore);
       }}>
-      {showMore ? (
-        <FormattedMessage defaultMessage="Show less" id="qyJtWy" />
-      ) : (
-        <FormattedMessage defaultMessage="Show more" id="aWpBzj" />
-      )}
+      {showMore ? <FormattedMessage defaultMessage="Show less" /> : <FormattedMessage defaultMessage="Show more" />}
     </a>
   );
 
@@ -53,7 +49,7 @@ export const NoteText = memo(function InnerContent(
     </>
   );
 
-  if (!appData.item.showContentWarningPosts) {
+  if (!showContentWarningPosts) {
     const contentWarning = ev.tags.find(a => a[0] === "content-warning");
     if (contentWarning) {
       return (
@@ -80,10 +76,10 @@ export const NoteText = memo(function InnerContent(
                   />
                 </>
               )}
-              . <FormattedMessage defaultMessage="Click here to load anyway" id="IoQq+a" />.{" "}
+              . <FormattedMessage defaultMessage="Click here to load anyway" />.{" "}
               <Link to="/settings/moderation">
                 <i>
-                  <FormattedMessage defaultMessage="Settings" id="D3idYv" />
+                  <FormattedMessage defaultMessage="Settings" />
                 </i>
               </Link>
             </>

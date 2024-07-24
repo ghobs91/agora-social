@@ -9,13 +9,13 @@ import useLogin from "@/Hooks/useLogin";
 export default function RightColumn() {
   const { pubkey } = useLogin(s => ({ pubkey: s.publicKey }));
   const hideRightColumnPaths = ["/login", "/new", "/messages"];
-  const show = !hideRightColumnPaths.some(path => location.pathname.startsWith(path));
+  const show = !hideRightColumnPaths.some(path => globalThis.location.pathname.startsWith(path));
 
   const getTitleMessage = () => {
     return pubkey ? (
-      <FormattedMessage defaultMessage="Trending notes" id="6k7xfM" />
+      <FormattedMessage defaultMessage="Trending notes" />
     ) : (
-      <FormattedMessage defaultMessage="Trending hashtags" id="CbM2hK" />
+      <FormattedMessage defaultMessage="Trending hashtags" />
     );
   };
 

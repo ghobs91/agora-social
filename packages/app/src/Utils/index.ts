@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import * as utils from "@noble/curves/abstract/utils";
 import * as secp from "@noble/curves/secp256k1";
 import { hmac } from "@noble/hashes/hmac";
@@ -436,9 +437,10 @@ export function getUrlHostname(url?: string) {
   }
 }
 
-export function sanitizeRelayUrl(url: string) {
+export function sanitizeRelayUrl(url?: string) {
+  if ((url?.length ?? 0) === 0) return;
   try {
-    return new URL(url).toString();
+    return new URL(url!).toString();
   } catch {
     // ignore
   }
@@ -459,7 +461,7 @@ export function kvToObject<T>(o: string, sep?: string) {
 export function defaultAvatar(input?: string) {
   if (isOffline()) return Nostrich;
   const key = (input?.length ?? 0) === 0 ? "missing" : input;
-  return `https://robohash.v0l.io/${key}.png${isHalloween() ? "?set=set2" : ""}`;
+  return `https://nostr.api.v0l.io/api/v1/avatar/${isHalloween() ? "zombies" : "cyberpunks"}/${key}.webp`;
 }
 
 export function isFormElement(target: HTMLElement): boolean {
@@ -536,7 +538,7 @@ export function trackEvent(
   if (
     !import.meta.env.DEV &&
     CONFIG.features.analytics &&
-    (LoginStore.snapshot().appData.item.preferences.telemetry ?? true)
+    (LoginStore.snapshot().state.appdata?.preferences.telemetry ?? true)
   ) {
     fetch("https://pa.v0l.io/api/event", {
       method: "POST",
@@ -546,9 +548,9 @@ export function trackEvent(
       body: JSON.stringify({
         d: CONFIG.hostname,
         n: event,
-        r: document.referrer === location.href ? null : document.referrer,
+        r: document.referrer === window.location.href ? null : document.referrer,
         p: props,
-        u: e?.destination?.url ?? `${location.protocol}//${location.host}${location.pathname}`,
+        u: e?.destination?.url ?? `${window.location.protocol}//${window.location.host}${window.location.pathname}`,
       }),
     });
   }

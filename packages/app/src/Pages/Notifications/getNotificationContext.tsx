@@ -1,5 +1,4 @@
-import { unwrap } from "@snort/shared";
-import { EventExt, EventKind, NostrLink, TaggedNostrEvent } from "@snort/system";
+import { EventKind, Nip10, NostrEvent, NostrLink, TaggedNostrEvent } from "@snort/system";
 
 export function getNotificationContext(ev: TaggedNostrEvent) {
   switch (ev.kind) {
@@ -18,15 +17,18 @@ export function getNotificationContext(ev: TaggedNostrEvent) {
       }
       break;
     }
-    case EventKind.Repost:
-    case EventKind.Reaction: {
-      const thread = EventExt.extractThread(ev);
-      const tag = unwrap(thread?.replyTo ?? thread?.root ?? { value: ev.id, key: "e" });
-      if (tag.key === "e" || tag.key === "a") {
-        return NostrLink.fromThreadTag(tag);
+    case EventKind.Repost: {
+      if (ev.kind === EventKind.Repost && ev.content.startsWith("{")) {
+        const innerEvent = JSON.parse(ev.content) as NostrEvent;
+        return NostrLink.fromEvent(innerEvent);
       } else {
-        throw new Error("Unknown thread context");
+        const thread = Nip10.parseThread(ev);
+        return thread?.replyTo ?? thread?.root ?? thread?.mentions[0];
       }
+    }
+    case EventKind.Reaction: {
+      const thread = Nip10.parseThread(ev);
+      return thread?.replyTo ?? thread?.root ?? thread?.mentions[0];
     }
     case EventKind.TextNote: {
       return NostrLink.fromEvent(ev);

@@ -1,13 +1,23 @@
 /// <reference lib="webworker" />
 
-import { SqliteRelay } from "./sqlite-relay";
+import { SqliteRelay } from "./sqlite/sqlite-relay";
 import { InMemoryRelay } from "./memory-relay";
-import { debugLog, setLogging } from "./debug";
+import { setLogging } from "./debug";
 import { WorkQueueItem, barrierQueue, processWorkQueue } from "./queue";
-import { NostrEvent, RelayHandler, ReqCommand, ReqFilter, WorkerMessage, unixNowMs, EventMetadata } from "./types";
+import {
+  NostrEvent,
+  RelayHandler,
+  ReqCommand,
+  ReqFilter,
+  WorkerMessage,
+  unixNowMs,
+  EventMetadata,
+  OkResponse,
+} from "./types";
 import { getForYouFeed } from "./forYouFeed";
 
 let relay: RelayHandler | undefined;
+let insertBatchSize = 10;
 
 // Event inserter queue
 let eventWriteQueue: Array<NostrEvent> = [];
@@ -24,7 +34,7 @@ async function insertBatch() {
             //console.debug("Yield insert, queue length: ", eventWriteQueue.length, ", cmds: ", cmdQueue.length);
             break;
           }
-          const batch = eventWriteQueue.splice(0, 10);
+          const batch = eventWriteQueue.splice(0, insertBatchSize);
           eventWriteQueue = eventWriteQueue.slice(batch.length);
           relay.eventBatch(batch);
         }
@@ -40,6 +50,11 @@ try {
   processWorkQueue(cmdQueue, 50);
 } catch (e) {
   console.error(e);
+}
+
+interface InitAargs {
+  databasePath: string;
+  insertBatchSize?: number;
 }
 
 const handleMsg = async (port: MessagePort | DedicatedWorkerGlobalScope, ev: MessageEvent) => {
@@ -61,26 +76,32 @@ const handleMsg = async (port: MessagePort | DedicatedWorkerGlobalScope, ev: Mes
       }
       case "init": {
         await barrierQueue(cmdQueue, async () => {
-          const [dbPath] = msg.args as Array<string>;
+          const args = msg.args as InitAargs;
+          insertBatchSize = args.insertBatchSize ?? 10;
           try {
             if ("WebAssembly" in self) {
               relay = new SqliteRelay();
             } else {
               relay = new InMemoryRelay();
             }
-            await relay.init(dbPath);
+            await relay.init(args.databasePath);
           } catch (e) {
             console.error("Fallback to InMemoryRelay", e);
             relay = new InMemoryRelay();
-            await relay.init(dbPath);
+            await relay.init(args.databasePath);
           }
           reply(msg.id, true);
         });
         break;
       }
       case "event": {
-        eventWriteQueue.push(msg.args as NostrEvent);
-        reply(msg.id, true);
+        const ev = msg.args as NostrEvent;
+        eventWriteQueue.push(ev);
+        reply(msg.id, {
+          ok: true,
+          id: ev.id,
+          relay: "",
+        } as OkResponse);
         break;
       }
       case "close": {
@@ -118,6 +139,20 @@ const handleMsg = async (port: MessagePort | DedicatedWorkerGlobalScope, ev: Mes
           for (const r of filters) {
             const c = relay!.count(r);
             results += c;
+          }
+          reply(msg.id, results);
+        });
+        break;
+      }
+      case "delete": {
+        console.debug("DELETE", msg.args);
+        await barrierQueue(cmdQueue, async () => {
+          const req = msg.args as ReqCommand;
+          let results = [];
+          const filters = req.slice(2) as Array<ReqFilter>;
+          for (const r of filters) {
+            const c = relay!.delete(r);
+            results.push(...c);
           }
           reply(msg.id, results);
         });

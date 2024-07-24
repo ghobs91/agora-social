@@ -4,11 +4,11 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "yarn workspace @snort/shared build && yarn workspace @snort/worker-relay build && yarn workspace @snort/system build && yarn workspace @snort/system-web build && yarn workspace @snort/system-react build && yarn workspace @snort/app build",
+    "build": "yarn workspace @snort/shared build && yarn workspace @snort/worker-relay build && yarn workspace @snort/system build && yarn workspace @snort/system-web build && yarn workspace @snort/system-react build && yarn workspace @snort/wallet build && yarn workspace @snort/app build",
     "start": "yarn build && yarn workspace @snort/app start",
     "test": "yarn build && yarn workspace @snort/app test && yarn workspace @snort/system test",
     "pre:commit": "yarn workspace @snort/app intl-extract && yarn workspace @snort/app intl-compile && yarn prettier --write .",
-    "push-prod": "git checkout snort-prod && git merge --ff-only main && git push && git checkout main",
+    "push-prod": "git switch snort-prod && git merge --ff-only main && git push && git checkout main",
     "docs": "typedoc --entryPointStrategy packages ./packages/* --exclude ./packages/app --exclude ./packages/webrtc-server --name snort.social"
   },
   "prettier": {
@@ -18,15 +18,15 @@
     "trailingComma": "all",
     "endOfLine": "lf"
   },
-  "packageManager": "yarn@3.6.3",
+  "packageManager": "yarn@4.1.1",
   "dependencies": {
     "@cloudflare/workers-types": "^4.20230307.0",
-    "@tauri-apps/cli": "^1.2.3",
     "eslint": "^8.48.0",
     "prettier": "^3.0.3",
     "typescript": "^5.2.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.5.14",
     "typedoc": "^0.25.7"
   }
 }

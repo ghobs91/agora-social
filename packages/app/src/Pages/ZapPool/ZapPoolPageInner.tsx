@@ -1,9 +1,9 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { SnortContext } from "@snort/system-react";
+import { useContext, useMemo, useSyncExternalStore } from "react";
 import { FormattedMessage, FormattedNumber } from "react-intl";
 
 import AsyncButton from "@/Components/Button/AsyncButton";
-import useEventPublisher from "@/Hooks/useEventPublisher";
-import useLogin from "@/Hooks/useLogin";
+import usePreferences from "@/Hooks/usePreferences";
 import { ZapPoolTarget } from "@/Pages/ZapPool/ZapPoolTarget";
 import { bech32ToHex, getRelayName, trackEvent, unwrap } from "@/Utils";
 import { SnortPubKey } from "@/Utils/Const";
@@ -19,8 +19,8 @@ const DataProviders = [
 ];
 
 export function ZapPoolPageInner() {
-  const login = useLogin();
-  const { system } = useEventPublisher();
+  const defaultZapAmount = usePreferences(s => s.defaultZapAmount);
+  const system = useContext(SnortContext);
   const zapPool = useSyncExternalStore(
     c => unwrap(ZapPoolController).hook(c),
     () => unwrap(ZapPoolController).snapshot(),
@@ -30,22 +30,22 @@ export function ZapPoolPageInner() {
   const relayConnections = useMemo(() => {
     return [...system.pool]
       .map(([, a]) => {
-        if (a.Info?.pubkey && !a.Ephemeral) {
+        if (a.info?.pubkey && !a.ephemeral) {
           return {
-            address: a.Address,
-            pubkey: a.Info.pubkey,
+            address: a.address,
+            pubkey: a.info.pubkey,
           };
         }
       })
       .filter(a => a !== undefined)
       .map(unwrap);
-  }, [login.relays]);
+  }, []);
 
   const sumPending = zapPool.reduce((acc, v) => acc + v.sum, 0);
   return (
     <div className="zap-pool main-content p">
       <h1>
-        <FormattedMessage defaultMessage="Zap Pool" id="i/dBAR" />
+        <FormattedMessage defaultMessage="Zap Pool" />
       </h1>
       <p>
         <FormattedMessage
@@ -66,7 +66,7 @@ export function ZapPoolPageInner() {
           values={{
             number: (
               <b>
-                <FormattedNumber value={login.appData.item.preferences.defaultZapAmount} />
+                <FormattedNumber value={defaultZapAmount} />
               </b>
             ),
           }}
@@ -79,14 +79,12 @@ export function ZapPoolPageInner() {
           values={{
             nIn: (
               <b>
-                <FormattedNumber value={login.appData.item.preferences.defaultZapAmount} />
+                <FormattedNumber value={defaultZapAmount} />
               </b>
             ),
             nOut: (
               <b>
-                <FormattedNumber
-                  value={ZapPoolController?.calcAllocation(login.appData.item.preferences.defaultZapAmount) ?? 0}
-                />
+                <FormattedNumber value={ZapPoolController?.calcAllocation(defaultZapAmount) ?? 0} />
               </b>
             ),
           }}
@@ -112,7 +110,7 @@ export function ZapPoolPageInner() {
               trackEvent("ZapPool", { manual: true });
               await ZapPoolController?.payout(wallet);
             }}>
-            <FormattedMessage defaultMessage="Payout Now" id="+PzQ9Y" />
+            <FormattedMessage defaultMessage="Payout Now" />
           </AsyncButton>
         )}
       </p>
@@ -129,7 +127,7 @@ export function ZapPoolPageInner() {
         />
       </div>
       <h3>
-        <FormattedMessage defaultMessage="Relays" id="RoOyAh" />
+        <FormattedMessage defaultMessage="Relays" />
       </h3>
       {relayConnections.map(a => (
         <div key={a.address}>
@@ -147,7 +145,7 @@ export function ZapPoolPageInner() {
         </div>
       ))}
       <h3>
-        <FormattedMessage defaultMessage="File hosts" id="XICsE8" />
+        <FormattedMessage defaultMessage="File hosts" />
       </h3>
       {UploaderServices.map(a => (
         <div key={a.name}>
@@ -165,7 +163,7 @@ export function ZapPoolPageInner() {
         </div>
       ))}
       <h3>
-        <FormattedMessage defaultMessage="Data Providers" id="ELbg9p" />
+        <FormattedMessage defaultMessage="Data Providers" />
       </h3>
       {DataProviders.map(a => (
         <div key={a.name}>

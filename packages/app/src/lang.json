@@ -5,6 +5,9 @@
   "+PzQ9Y": {
     "defaultMessage": "Payout Now"
   },
+  "+QM0PJ": {
+    "defaultMessage": "Sync all events for your profile into local cache"
+  },
   "+UjDmN": {
     "defaultMessage": "Logged in with write access"
   },
@@ -40,10 +43,6 @@
   },
   "/JE/X+": {
     "defaultMessage": "Account Support"
-  },
-  "/PCavi": {
-    "defaultMessage": "Public",
-    "description": "Public Zap"
   },
   "/Xf4UW": {
     "defaultMessage": "Send anonymous usage metrics"
@@ -235,9 +234,6 @@
   "5ykRmX": {
     "defaultMessage": "Send zap"
   },
-  "6/SF6e": {
-    "defaultMessage": "<h1>{n}</h1> Cashu sats"
-  },
   "6/hB3S": {
     "defaultMessage": "Watch Replay"
   },
@@ -355,10 +351,6 @@
   },
   "Am8glJ": {
     "defaultMessage": "Game"
-  },
-  "AnLrRC": {
-    "defaultMessage": "Non-Zap",
-    "description": "Non-Zap, Regular LN payment"
   },
   "Aujn2T": {
     "defaultMessage": "Count"
@@ -525,6 +517,9 @@
   "FvanT6": {
     "defaultMessage": "Accounts"
   },
+  "FzbSGg": {
+    "defaultMessage": "You dont have any media servers, try adding some."
+  },
   "G/yZLu": {
     "defaultMessage": "Remove"
   },
@@ -598,6 +593,9 @@
   "IEwZvs": {
     "defaultMessage": "Are you sure you want to unpin this note?"
   },
+  "IIOul1": {
+    "defaultMessage": "Account Data"
+  },
   "IKKHqV": {
     "defaultMessage": "Follows"
   },
@@ -652,6 +650,9 @@
   "JSx7y9": {
     "defaultMessage": "Subscribe to {site_name} {plan} for {price} and receive the following rewards"
   },
+  "JTht/T": {
+    "defaultMessage": "NIP-96"
+  },
   "JeoS4y": {
     "defaultMessage": "Repost"
   },
@@ -673,18 +674,11 @@
   "KAhAcM": {
     "defaultMessage": "Enter LNDHub config"
   },
-  "KHK8B9": {
-    "defaultMessage": "Relay",
-    "description": "Label for reading global feed from specific relays"
-  },
   "KQvWvD": {
     "defaultMessage": "Deleted"
   },
   "KahimY": {
     "defaultMessage": "Unknown event kind: {kind}"
-  },
-  "KoFlZg": {
-    "defaultMessage": "Enter mint URL"
   },
   "KtsyO0": {
     "defaultMessage": "Enter Pin"
@@ -798,6 +792,12 @@
   "ORGv1Q": {
     "defaultMessage": "Created"
   },
+  "OoZgbB": {
+    "defaultMessage": "Failed to update, please try again"
+  },
+  "OxPdQ0": {
+    "defaultMessage": "Scanning {date}"
+  },
   "P2o+ZZ": {
     "defaultMessage": "Invalid Nostr Address"
   },
@@ -813,10 +813,6 @@
   "PCSt5T": {
     "defaultMessage": "Preferences"
   },
-  "PJeJFc": {
-    "defaultMessage": "Summary",
-    "description": "Notifications summary"
-  },
   "PXQ0z0": {
     "defaultMessage": "Receiving to <b>{wallet}</b>"
   },
@@ -831,6 +827,9 @@
   },
   "QDFTjG": {
     "defaultMessage": "{n} Relays"
+  },
+  "QJfhKt": {
+    "defaultMessage": "The private key is like a password, but it cannot be reset. Guard it carefully and never show it to anyone. Once someone has your private key, they will have access to your account forever."
   },
   "QWhotP": {
     "defaultMessage": "Zap Pool only works if you use one of the supported wallet connections (WebLN, LNC, LNDHub or Nostr Wallet Connect)"
@@ -861,6 +860,9 @@
   },
   "RoOyAh": {
     "defaultMessage": "Relays"
+  },
+  "RrCui3": {
+    "defaultMessage": "Summary"
   },
   "Rs4kCE": {
     "defaultMessage": "Bookmark"
@@ -950,6 +952,9 @@
   "UUPFlt": {
     "defaultMessage": "Users must accept the content warning to show the content of your note."
   },
+  "UaCh1c": {
+    "defaultMessage": "Add Server"
+  },
   "Ub+AGc": {
     "defaultMessage": "Sign In"
   },
@@ -1019,6 +1024,9 @@
   "XQiFEl": {
     "defaultMessage": "Follows Relay Health"
   },
+  "XSdWHA": {
+    "defaultMessage": "Redeem"
+  },
   "XXm7jJ": {
     "defaultMessage": "Trending Hashtags"
   },
@@ -1030,10 +1038,6 @@
   },
   "Xopqkl": {
     "defaultMessage": "Your default zap amount is {number} sats, example values are calculated from this."
-  },
-  "XrSk2j": {
-    "defaultMessage": "Redeem",
-    "description": "Button: Redeem Cashu token"
   },
   "YDURw6": {
     "defaultMessage": "Service URL"
@@ -1064,6 +1068,9 @@
   },
   "ZlmK/p": {
     "defaultMessage": "{name} invited you to {app}"
+  },
+  "a1x4gD": {
+    "defaultMessage": "Media servers store media which you can share in notes as images and videos"
   },
   "a5UPxh": {
     "defaultMessage": "Fund developers and platforms providing NIP-05 verification services"
@@ -1144,6 +1151,9 @@
     "defaultMessage": "URL..",
     "description": "Placeholder text for imgproxy url textbox"
   },
+  "cVcgLJ": {
+    "defaultMessage": "Media Servers"
+  },
   "cWx9t8": {
     "defaultMessage": "Mute all"
   },
@@ -1167,6 +1177,9 @@
   },
   "d7d0/x": {
     "defaultMessage": "LN Address"
+  },
+  "dK2CcV": {
+    "defaultMessage": "The public key is like your username, you can share it with anyone."
   },
   "dOQCL8": {
     "defaultMessage": "Display name"
@@ -1294,6 +1307,9 @@
   "hF6IN2": {
     "defaultMessage": "Prune Follow List"
   },
+  "hMQmIw": {
+    "defaultMessage": "Sync Account"
+  },
   "hMzcSq": {
     "defaultMessage": "Messages"
   },
@@ -1344,6 +1360,9 @@
   },
   "iXPL0Z": {
     "defaultMessage": "Can't login with private key on an insecure connection, please use a Nostr key manager extension instead"
+  },
+  "iYc3Ld": {
+    "defaultMessage": "Payments"
   },
   "ieGrWo": {
     "defaultMessage": "Follow"
@@ -1420,11 +1439,17 @@
   "lD3+8a": {
     "defaultMessage": "Pay"
   },
+  "lEnclp": {
+    "defaultMessage": "My events: {n}"
+  },
   "lPWASz": {
     "defaultMessage": "Snort nostr address"
   },
   "lTbT3s": {
     "defaultMessage": "Wallet password"
+  },
+  "lfOesV": {
+    "defaultMessage": "Non-Zap"
   },
   "lgg1KN": {
     "defaultMessage": "account page"
@@ -1453,6 +1478,9 @@
   "mKhgP9": {
     "defaultMessage": "{n,plural,=0{} =1{zapped} other{zapped}}"
   },
+  "mOFG3K": {
+    "defaultMessage": "Start"
+  },
   "mfe8RW": {
     "defaultMessage": "Option: {n}"
   },
@@ -1473,6 +1501,9 @@
   },
   "nUT0Lv": {
     "defaultMessage": "Tools"
+  },
+  "nWQFic": {
+    "defaultMessage": "Renew"
   },
   "nihgfo": {
     "defaultMessage": "Listen to this article"
@@ -1513,10 +1544,6 @@
   "puLNUJ": {
     "defaultMessage": "Pin"
   },
-  "pukxg/": {
-    "defaultMessage": "Payments",
-    "description": "Wallet transation history"
-  },
   "pzTOmv": {
     "defaultMessage": "Followers"
   },
@@ -1534,6 +1561,9 @@
   },
   "qUJTsT": {
     "defaultMessage": "Blocked"
+  },
+  "qXCbgZ": {
+    "defaultMessage": "Unlock"
   },
   "qZsKBR": {
     "defaultMessage": "Renew {tier}"
@@ -1634,6 +1664,12 @@
   "uc0din": {
     "defaultMessage": "Send sats splits to"
   },
+  "ufvXH1": {
+    "defaultMessage": "Found {n} events"
+  },
+  "uhu5aG": {
+    "defaultMessage": "Public"
+  },
   "un1nGw": {
     "defaultMessage": "{n} notes"
   },
@@ -1679,10 +1715,6 @@
   "wSZR47": {
     "defaultMessage": "Submit"
   },
-  "wWLwvh": {
-    "defaultMessage": "Anon",
-    "description": "Anonymous Zap"
-  },
   "whSrs+": {
     "defaultMessage": "Nostr Public Chat"
   },
@@ -1713,10 +1745,6 @@
   "xIoGG9": {
     "defaultMessage": "Go to"
   },
-  "xQtL3v": {
-    "defaultMessage": "Unlock",
-    "description": "Unlock wallet"
-  },
   "xSoIUU": {
     "defaultMessage": "Worker Relay"
   },
@@ -1744,8 +1772,14 @@
   "y1Z3or": {
     "defaultMessage": "Language"
   },
+  "yAztTU": {
+    "defaultMessage": "{n} eSats"
+  },
   "yCLnBC": {
     "defaultMessage": "LNURL or Lightning Address"
+  },
+  "z3UjXR": {
+    "defaultMessage": "Debug"
   },
   "zCb8fX": {
     "defaultMessage": "Weight"
@@ -1770,9 +1804,6 @@
   },
   "zvCDao": {
     "defaultMessage": "Automatically show latest notes"
-  },
-  "zwb6LR": {
-    "defaultMessage": "<b>Mint:</b> {url}"
   },
   "zxvhnE": {
     "defaultMessage": "Daily"

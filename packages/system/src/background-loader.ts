@@ -6,6 +6,7 @@ export abstract class BackgroundLoader<T extends { loaded: number; created: numb
   #system: SystemInterface;
   readonly cache: CachedTable<T>;
   #log = debug(this.name());
+  #blacklist = new Set();
 
   /**
    * List of pubkeys to fetch metadata for
@@ -44,11 +45,6 @@ export abstract class BackgroundLoader<T extends { loaded: number; created: numb
   protected abstract buildSub(missing: Array<string>): RequestBuilder;
 
   /**
-   * Create a placeholder value when no data can be found
-   */
-  protected abstract makePlaceholder(key: string): T | undefined;
-
-  /**
    * Start requesting a set of keys to be loaded
    */
   TrackKeys(pk: string | Array<string>) {
@@ -83,6 +79,9 @@ export abstract class BackgroundLoader<T extends { loaded: number; created: numb
               resolve(existing);
               this.UntrackKeys(key);
               this.cache.off("change", handler);
+            } else {
+              // should never happen
+              reject(new Error("Not found"));
             }
           }
         };
@@ -92,7 +91,7 @@ export abstract class BackgroundLoader<T extends { loaded: number; created: numb
   }
 
   async #FetchMetadata() {
-    const loading = [...this.#wantsKeys];
+    const loading = [...this.#wantsKeys].filter(a => !this.#blacklist.has(a));
     await this.cache.buffer(loading);
 
     const missing = loading.filter(a => (this.cache.getFromCache(a)?.loaded ?? 0) < this.getExpireCutoff());
@@ -100,16 +99,12 @@ export abstract class BackgroundLoader<T extends { loaded: number; created: numb
       this.#log("Fetching keys: %O", missing);
       try {
         const found = await this.#loadData(missing);
-        const noResult = removeUndefined(
-          missing.filter(a => !found.some(b => a === this.cache.key(b))).map(a => this.makePlaceholder(a)),
-        );
+        const noResult = removeUndefined(missing.filter(a => !found.some(b => a === this.cache.key(b))));
         if (noResult.length > 0) {
-          this.#log("Adding placeholders for %O", noResult);
-          await Promise.all(noResult.map(a => this.cache.update(a)));
+          noResult.forEach(a => this.#blacklist.add(a));
         }
       } catch (e) {
         this.#log("Error: %O", e);
-        debugger;
       }
     }
 
@@ -123,19 +118,11 @@ export abstract class BackgroundLoader<T extends { loaded: number; created: numb
       await Promise.all(results.map(a => this.cache.update(a)));
       return results;
     } else {
-      const hookHandled = new Set<string>();
-      const v = await this.#system.Fetch(this.buildSub(missing), async e => {
-        this.#log("Callback handled %o", e);
-        for (const pe of e) {
-          const m = this.onEvent(pe);
-          if (m) {
-            await this.cache.update(m);
-            hookHandled.add(pe.id);
-          }
-        }
-      });
+      const v = await this.#system.Fetch(this.buildSub(missing));
       this.#log("Got data", v);
-      return removeUndefined(v.map(this.onEvent));
+      const results = removeUndefined(v.map(this.onEvent));
+      await Promise.all(results.map(a => this.cache.update(a)));
+      return results;
     }
   }
 }

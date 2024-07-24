@@ -1,32 +1,10 @@
-import debug from "debug";
 import { v4 as uuid } from "uuid";
-import { appendDedupe, dedupe, sanitizeRelayUrl, unixNowMs, unwrap } from "@snort/shared";
+import { appendDedupe, dedupe, removeUndefined, sanitizeRelayUrl, unwrap } from "@snort/shared";
 
 import EventKind from "./event-kind";
-import { NostrLink, NostrPrefix, SystemInterface } from ".";
+import { NostrLink, NostrPrefix, ToNostrEventTag } from ".";
 import { ReqFilter, u256, HexKey, TaggedNostrEvent } from "./nostr";
 import { RequestRouter } from "./request-router";
-
-/**
- * Which strategy is used when building REQ filters
- */
-export const enum RequestStrategy {
-  /**
-   * Use the users default relays to fetch events,
-   * this is the fallback option when there is no better way to query a given filter set
-   */
-  DefaultRelays = "default",
-
-  /**
-   * Using a cached copy of the authors relay lists NIP-65, split a given set of request filters by pubkey
-   */
-  AuthorsRelays = "authors-relays",
-
-  /**
-   * Use pre-determined relays for query
-   */
-  ExplicitRelays = "explicit-relays",
-}
 
 /**
  * A built REQ filter ready for sending to System
@@ -34,8 +12,6 @@ export const enum RequestStrategy {
 export interface BuiltRawReqFilter {
   filters: Array<ReqFilter>;
   relay: string;
-  strategy: RequestStrategy;
-
   // Use set sync from an existing set of events
   syncFrom?: Array<TaggedNostrEvent>;
 }
@@ -45,11 +21,6 @@ export interface RequestBuilderOptions {
    * Dont send CLOSE directly after EOSE and allow events to stream in
    */
   leaveOpen?: boolean;
-
-  /**
-   * Do not apply diff logic and always use full filters for query
-   */
-  skipDiff?: boolean;
 
   /**
    * Pick N relays per pubkey when using outbox strategy
@@ -67,10 +38,11 @@ export interface RequestBuilderOptions {
   groupingDelay?: number;
 
   /**
-   * If events should be added automatically to the internal NoteCollection
-   * default=true
+   * Replace the query every time a change in the query is detected
+   *
+   * eg. Live stream chat reactions
    */
-  fillStore?: boolean;
+  replaceable?: boolean;
 }
 
 /**
@@ -81,7 +53,6 @@ export class RequestBuilder {
   instance: string;
   #builders: Array<RequestFilterBuilder>;
   #options?: RequestBuilderOptions;
-  #log = debug("RequestBuilder");
 
   constructor(id: string) {
     this.instance = uuid();
@@ -131,68 +102,6 @@ export class RequestBuilder {
   buildRaw(): Array<ReqFilter> {
     return this.#builders.map(f => f.filter);
   }
-
-  build(system: SystemInterface): Array<BuiltRawReqFilter> {
-    const expanded = this.#builders.flatMap(a => a.build(system.requestRouter, this.#options));
-    return this.#groupByRelay(system, expanded);
-  }
-
-  /**
-   * Detects a change in request from a previous set of filters
-   */
-  async buildDiff(system: SystemInterface, prev: Array<ReqFilter>): Promise<Array<BuiltRawReqFilter>> {
-    const start = unixNowMs();
-
-    const diff = system.optimizer.getDiff(prev, this.buildRaw());
-    const ts = unixNowMs() - start;
-    this.#log("buildDiff %s %d ms +%d", this.id, ts, diff.length);
-    if (diff.length > 0) {
-      if (system.requestRouter) {
-        // todo: fix for explicit relays
-        return system.requestRouter.forFlatRequest(diff).map(a => {
-          return {
-            strategy: RequestStrategy.AuthorsRelays,
-            filters: system.optimizer.flatMerge(a.filters),
-            relay: a.relay,
-          };
-        });
-      } else {
-        return [
-          {
-            strategy: RequestStrategy.DefaultRelays,
-            filters: system.optimizer.flatMerge(diff),
-            relay: "",
-          },
-        ];
-      }
-    }
-    return [];
-  }
-
-  /**
-   * Merge a set of expanded filters into the smallest number of subscriptions by merging similar requests
-   */
-  #groupByRelay(system: SystemInterface, filters: Array<BuiltRawReqFilter>) {
-    const relayMerged = filters.reduce((acc, v) => {
-      const existing = acc.get(v.relay);
-      if (existing) {
-        existing.push(v);
-      } else {
-        acc.set(v.relay, [v]);
-      }
-      return acc;
-    }, new Map<string, Array<BuiltRawReqFilter>>());
-
-    const filtersSquashed = [...relayMerged.values()].map(a => {
-      return {
-        filters: system.optimizer.flatMerge(a.flatMap(b => b.filters.flatMap(c => system.optimizer.expandFilter(c)))),
-        relay: a[0].relay,
-        strategy: a[0].strategy,
-      } as BuiltRawReqFilter;
-    });
-
-    return filtersSquashed;
-  }
 }
 
 /**
@@ -200,14 +109,15 @@ export class RequestBuilder {
  */
 export class RequestFilterBuilder {
   #filter: ReqFilter;
-  #relays = new Set<string>();
 
   constructor(f?: ReqFilter) {
     this.#filter = f ?? {};
   }
 
   get filter() {
-    return { ...this.#filter };
+    return {
+      ...this.#filter,
+    };
   }
 
   /**
@@ -215,11 +125,10 @@ export class RequestFilterBuilder {
    */
   relay(u: string | Array<string>) {
     const relays = Array.isArray(u) ? u : [u];
-    for (const r of relays) {
-      const uClean = sanitizeRelayUrl(r);
-      if (uClean) {
-        this.#relays.add(uClean);
-      }
+    this.#filter.relays = appendDedupe(this.#filter.relays, removeUndefined(relays.map(a => sanitizeRelayUrl(a))));
+    // make sure we dont have an empty array
+    if (this.#filter.relays?.length === 0) {
+      this.#filter.relays = undefined;
     }
     return this;
   }
@@ -232,6 +141,7 @@ export class RequestFilterBuilder {
   authors(authors?: Array<HexKey>) {
     if (!authors) return this;
     this.#filter.authors = appendDedupe(this.#filter.authors, authors);
+    this.#filter.authors = this.#filter.authors.filter(a => a.length === 64);
     return this;
   }
 
@@ -265,6 +175,19 @@ export class RequestFilterBuilder {
     return this;
   }
 
+  /**
+   * Query by a nostr tag
+   */
+  tags(tags: Array<ToNostrEventTag>) {
+    for (const tag of tags) {
+      const tt = tag.toEventTag();
+      if (tt) {
+        this.tag(tt[0], [tt[1]]);
+      }
+    }
+    return this;
+  }
+
   search(keyword?: string) {
     if (!keyword) return this;
     this.#filter.search = keyword;
@@ -280,7 +203,15 @@ export class RequestFilterBuilder {
         .kinds([unwrap(link.kind)])
         .authors([unwrap(link.author)]);
     } else {
-      this.ids([link.id]);
+      if (link.id) {
+        this.ids([link.id]);
+      }
+      if (link.author) {
+        this.authors([link.author]);
+      }
+      if (link.kind !== undefined) {
+        this.kinds([link.kind]);
+      }
     }
     link.relays?.forEach(v => this.relay(v));
     return this;
@@ -293,51 +224,23 @@ export class RequestFilterBuilder {
     const types = dedupe(links.map(a => a.type));
     if (types.length > 1) throw new Error("Cannot add multiple links of different kinds");
 
-    const tags = links.map(a => unwrap(a.toEventTag()));
+    const tags = removeUndefined(links.map(a => a.toEventTag()));
     this.tag(
       tags[0][0],
       tags.map(v => v[1]),
     );
+    this.relay(removeUndefined(links.map(a => a.relays).flat()));
     return this;
   }
 
   /**
    * Build/expand this filter into a set of relay specific queries
    */
-  build(model?: RequestRouter, options?: RequestBuilderOptions): Array<BuiltRawReqFilter> {
-    return this.#buildFromFilter(this.#filter, model, options);
-  }
-
-  #buildFromFilter(f: ReqFilter, model?: RequestRouter, options?: RequestBuilderOptions) {
-    // use the explicit relay list first
-    if (this.#relays.size > 0) {
-      return [...this.#relays].map(r => {
-        return {
-          filters: [f],
-          relay: r,
-          strategy: RequestStrategy.ExplicitRelays,
-        };
-      });
+  build(model?: RequestRouter, options?: RequestBuilderOptions): Array<ReqFilter> {
+    if (model) {
+      return model.forRequest(this.filter, options?.outboxPickN);
     }
 
-    // If any authors are set use the gossip model to fetch data for each author
-    if (f.authors && model) {
-      const split = model.forRequest(f, options?.outboxPickN);
-      return split.map(a => {
-        return {
-          filters: [a.filter],
-          relay: a.relay,
-          strategy: RequestStrategy.AuthorsRelays,
-        };
-      });
-    }
-
-    return [
-      {
-        filters: [f],
-        relay: "",
-        strategy: RequestStrategy.DefaultRelays,
-      },
-    ];
+    return [this.filter];
   }
 }

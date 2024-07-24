@@ -8,10 +8,12 @@ import {
   LNWallet,
   WalletError,
   WalletErrorCode,
+  WalletEvents,
   WalletInfo,
   WalletInvoice,
   WalletInvoiceState,
-} from "@/Wallet";
+} from ".";
+import EventEmitter from "eventemitter3";
 
 interface WalletConnectConfig {
   relayUrl: string;
@@ -75,7 +77,7 @@ interface MakeInvoiceResponse {
 
 const DefaultSupported = ["get_info", "pay_invoice"];
 
-export class NostrConnectWallet implements LNWallet {
+export class NostrConnectWallet extends EventEmitter<WalletEvents> implements LNWallet {
   #log = debug("NWC");
   #config: WalletConnectConfig;
   #conn?: Connection;
@@ -83,10 +85,8 @@ export class NostrConnectWallet implements LNWallet {
   #info?: WalletInfo;
   #supported_methods: Array<string> = DefaultSupported;
 
-  constructor(
-    cfg: string,
-    readonly changed: (data?: object) => void,
-  ) {
+  constructor(cfg: string) {
+    super();
     this.#config = NostrConnectWallet.parseConfigUrl(cfg);
     this.#commandQueue = new Map();
   }
@@ -156,9 +156,7 @@ export class NostrConnectWallet implements LNWallet {
           },
           reject,
         });
-        this.#conn?.queueReq(["REQ", "info", { kinds: [13194], limit: 1 }], () => {
-          // ignored
-        });
+        this.#conn?.request(["REQ", "info", { kinds: [13194], limit: 1 }]);
       });
     } else {
       throw new WalletError(WalletErrorCode.GeneralError, rsp.error.message);
@@ -183,7 +181,7 @@ export class NostrConnectWallet implements LNWallet {
       this.#conn.connect();
     });
     await this.getInfo();
-    this.changed();
+    this.emit("change");
     return true;
   }
 
@@ -292,7 +290,7 @@ export class NostrConnectWallet implements LNWallet {
 
     pending.resolve(e.content);
     this.#commandQueue.delete(replyTo[1]);
-    this.#conn?.closeReq(sub);
+    this.#conn?.closeRequest(sub);
   }
 
   async #rpc<T>(method: string, params: Record<string, string | number | undefined>) {
@@ -320,21 +318,16 @@ export class NostrConnectWallet implements LNWallet {
       .tag(["p", this.#config.walletPubkey]);
 
     const evCommand = await eb.buildAndSign(this.#config.secret);
-    this.#conn.queueReq(
-      [
-        "REQ",
-        evCommand.id.slice(0, 12),
-        {
-          kinds: [23195 as EventKind],
-          authors: [this.#config.walletPubkey],
-          ["#e"]: [evCommand.id],
-        },
-      ],
-      () => {
-        // ignored
+    this.#conn.request([
+      "REQ",
+      evCommand.id.slice(0, 12),
+      {
+        kinds: [23195 as EventKind],
+        authors: [this.#config.walletPubkey],
+        ["#e"]: [evCommand.id],
       },
-    );
-    await this.#conn.sendEventAsync(evCommand);
+    ]);
+    await this.#conn.publish(evCommand);
     return await new Promise<T>((resolve, reject) => {
       this.#commandQueue.set(evCommand.id, {
         resolve: async (o: string) => {

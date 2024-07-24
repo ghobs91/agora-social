@@ -123,8 +123,6 @@ export function Thread(props: { onBack?: () => void; disableSpotlight?: boolean 
           <pre>{JSON.stringify(thread.root, undefined, "  ")}</pre>
           <h1>Data</h1>
           <pre>{JSON.stringify(thread.data, undefined, "  ")}</pre>
-          <h1>Reactions</h1>
-          <pre>{JSON.stringify(thread.reactions, undefined, "  ")}</pre>
         </div>
       )}
       {parent && (
@@ -138,7 +136,7 @@ export function Thread(props: { onBack?: () => void; disableSpotlight?: boolean 
         {!thread.root && renderCurrent()}
         {!thread.root && !thread.current && (
           <NoteGhost>
-            <FormattedMessage defaultMessage="Looking up thread..." id="JA+tz3" />
+            <FormattedMessage defaultMessage="Looking up thread..." />
           </NoteGhost>
         )}
       </div>

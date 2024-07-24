@@ -2,18 +2,19 @@ import "./index.css";
 import "@szhsin/react-menu/dist/index.css";
 import "@/assets/fonts/inter.css";
 
+import { unixNow } from "@snort/shared";
 import { SnortContext } from "@snort/system-react";
 import { StrictMode } from "react";
 import * as ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouteObject, RouterProvider } from "react-router-dom";
 
-import { initRelayWorker, preload, UserCache } from "@/Cache";
+import { initRelayWorker, preload, Relay, UserCache } from "@/Cache";
 import { ThreadRoute } from "@/Components/Event/Thread/ThreadRoute";
 import { IntlProvider } from "@/Components/IntlProvider/IntlProvider";
 import { db } from "@/Db";
 import { addCachedMetadataToFuzzySearch } from "@/Db/FuzzySearch";
-import { updateRelayConnections } from "@/Hooks/useLoginRelays";
 import { AboutPage } from "@/Pages/About";
+import { DebugPage } from "@/Pages/CacheDebug";
 import { SnortDeckLayout } from "@/Pages/Deck/DeckLayout";
 import DonatePage from "@/Pages/Donate/DonatePage";
 import ErrorPage from "@/Pages/ErrorPage";
@@ -39,10 +40,12 @@ import { WalletSendPage } from "@/Pages/wallet/send";
 import ZapPoolPage from "@/Pages/ZapPool/ZapPool";
 import { System } from "@/system";
 import { storeRefCode, unwrap } from "@/Utils";
-import { LoginStore } from "@/Utils/Login";
 import { hasWasm, wasmInit, WasmPath } from "@/Utils/wasm";
 import { Wallets } from "@/Wallet";
-import { setupWebLNWalletConfig } from "@/Wallet/WebLN";
+import { setupWebLNWalletConfig } from "@/Wallet";
+
+import { Day } from "./Utils/Const";
+import { LoginStore } from "./Utils/Login";
 
 async function initSite() {
   storeRefCode();
@@ -50,17 +53,15 @@ async function initSite() {
     await wasmInit(WasmPath);
     await initRelayWorker();
   }
-  const login = LoginStore.takeSnapshot();
-  updateRelayConnections(System, login.relays.item).catch(console.error);
+
   setupWebLNWalletConfig(Wallets);
 
   db.ready = await db.isAvailable();
-  if (db.ready) {
-    await preload(login.follows.item);
-    await System.PreloadSocialGraph();
-  }
 
-  queueMicrotask(() => {
+  const login = LoginStore.snapshot();
+  preload(login.state.follows).then(async () => {
+    await System.PreloadSocialGraph(login.state.follows);
+
     for (const ev of UserCache.snapshot()) {
       try {
         addCachedMetadataToFuzzySearch(ev);
@@ -70,12 +71,19 @@ async function initSite() {
     }
   });
 
+  // cleanup
+  Relay.delete(["REQ", "cleanup", { kinds: [1, 7, 9735], until: unixNow() - Day * 30 }]);
+
   return null;
 }
 
 let didInit = false;
 const mainRoutes = [
   ...RootRoutes,
+  {
+    path: "/cache-debug",
+    element: <DebugPage />,
+  },
   {
     path: "/help",
     element: <HelpPage />,

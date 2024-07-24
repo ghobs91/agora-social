@@ -166,7 +166,7 @@ function extractHashtags(fragments: Fragment[]) {
     .map(f => {
       if (typeof f === "string") {
         return f.split(HashtagRegex).map(i => {
-          if (i.toLowerCase().startsWith("#")) {
+          if (i.match(HashtagRegex)) {
             return {
               type: "hashtag",
               content: i.substring(1),

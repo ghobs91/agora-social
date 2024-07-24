@@ -46,7 +46,7 @@ export interface UserPreferences {
   /**
    * File uploading service to upload attachments to
    */
-  fileUploader: "void.cat" | "nostr.build" | "nostrimg.com" | "void.cat-NIP96" | "nostrcheck.me";
+  fileUploader: "void.cat" | "nostr.build" | "nostrimg.com" | "void.cat-NIP96" | "nostrcheck.me" | "nip96";
 
   /**
    * Use imgproxy to optimize images
@@ -102,6 +102,11 @@ export interface UserPreferences {
    * Hides muted notes when selected
    */
   hideMutedNotes: boolean;
+
+  /**
+   * Show posts with content warning
+   */
+  showContentWarningPosts: boolean;
 }
 
 export const DefaultPreferences = {
@@ -112,7 +117,7 @@ export const DefaultPreferences = {
   confirmReposts: false,
   showDebugMenus: true,
   autoShowLatest: false,
-  fileUploader: "void.cat",
+  fileUploader: "nostr.build",
   imgProxyConfig: DefaultImgProxy,
   defaultRootTab: "following",
   defaultZapAmount: 50,
@@ -123,4 +128,5 @@ export const DefaultPreferences = {
   checkSigs: true,
   autoTranslate: true,
   hideMutedNotes: false,
+  showContentWarningPosts: false,
 } as UserPreferences;

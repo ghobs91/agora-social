@@ -10,8 +10,9 @@ export interface KeyedHookFilter {
   fn: HookFn;
 }
 
-export interface CacheEvents {
+export interface CacheEvents<T> {
   change: (keys: Array<string>) => void;
+  update: (v: T) => void;
 }
 
 export type CachedTable<T> = {
@@ -40,12 +41,13 @@ export type CachedTable<T> = {
   buffer(keys: Array<string>): Promise<Array<string>>;
   key(of: T): string;
   snapshot(): Array<T>;
-} & EventEmitter<CacheEvents>;
+  search(q: string): Promise<Array<T>>;
+} & EventEmitter<CacheEvents<T>>;
 
 /**
  * Dexie backed generic hookable store
  */
-export abstract class FeedCache<TCached> extends EventEmitter<CacheEvents> implements CachedTable<TCached> {
+export abstract class FeedCache<TCached> extends EventEmitter<CacheEvents<TCached>> implements CachedTable<TCached> {
   readonly name: string;
   #snapshot: Array<TCached> = [];
   protected log: ReturnType<typeof debug>;
@@ -225,4 +227,5 @@ export abstract class FeedCache<TCached> extends EventEmitter<CacheEvents> imple
 
   abstract key(of: TCached): string;
   abstract takeSnapshot(): Array<TCached>;
+  abstract search(q: string): Promise<Array<TCached>>;
 }

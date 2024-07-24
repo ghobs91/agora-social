@@ -6,7 +6,6 @@ import PageSpinner from "@/Components/PageSpinner";
 import TrendingUsers from "@/Components/Trending/TrendingUsers";
 import FollowListBase from "@/Components/User/FollowListBase";
 import NostrBandApi from "@/External/NostrBand";
-import SemisolDevApi from "@/External/SemisolDev";
 import useCachedFetch from "@/Hooks/useCachedFetch";
 import useLogin from "@/Hooks/useLogin";
 import { hexToBech32 } from "@/Utils";
@@ -15,25 +14,19 @@ import { ErrorOrOffline } from "./ErrorOrOffline";
 
 enum Provider {
   NostrBand = 1,
-  SemisolDev = 2,
 }
 
 export default function SuggestedProfiles() {
-  const login = useLogin(s => ({ publicKey: s.publicKey, follows: s.follows.item }));
+  const publicKey = useLogin(s => s.publicKey);
   const [provider, setProvider] = useState(Provider.NostrBand);
 
   const getUrlAndKey = () => {
-    if (!login.publicKey) return { url: null, key: null };
+    if (!publicKey) return { url: null, key: null };
     switch (provider) {
       case Provider.NostrBand: {
         const api = new NostrBandApi();
-        const url = api.suggestedFollowsUrl(hexToBech32(NostrPrefix.PublicKey, login.publicKey));
+        const url = api.suggestedFollowsUrl(hexToBech32(NostrPrefix.PublicKey, publicKey));
         return { url, key: `nostr-band-${url}` };
-      }
-      case Provider.SemisolDev: {
-        const api = new SemisolDevApi();
-        const url = api.suggestedFollowsUrl(login.publicKey, login.follows);
-        return { url, key: `semisol-dev-${url}` };
       }
       default:
         return { url: null, key: null };
@@ -49,8 +42,6 @@ export default function SuggestedProfiles() {
     switch (provider) {
       case Provider.NostrBand:
         return data.profiles.map(a => a.pubkey);
-      case Provider.SemisolDev:
-        return data.recommendations.sort(a => a[1]).map(a => a[0]);
       default:
         return [];
     }
@@ -63,7 +54,7 @@ export default function SuggestedProfiles() {
   return (
     <>
       <div className="flex items-center justify-between bg-superdark p br">
-        <FormattedMessage defaultMessage="Provider" id="xaj9Ba" />
+        <FormattedMessage defaultMessage="Provider" />
         <select onChange={e => setProvider(Number(e.target.value))}>
           <option value={Provider.NostrBand}>nostr.band</option>
           {/*<option value={Provider.SemisolDev}>semisol.dev</option>*/}

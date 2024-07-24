@@ -12,15 +12,37 @@ import {
 } from ".";
 import { findTag } from "./utils";
 
+/**
+ * An object which can be stored in a nostr event as a tag
+ */
 export interface ToNostrEventTag {
   toEventTag(): Array<string> | undefined;
+  equals(other: ToNostrEventTag): boolean;
 }
 
 export class NostrHashtagLink implements ToNostrEventTag {
   constructor(readonly tag: string) {}
 
-  toEventTag(): string[] | undefined {
+  equals(other: ToNostrEventTag): boolean {
+    const otherTag = other.toEventTag();
+    return otherTag?.at(0) === "t" && otherTag?.at(1) === this.tag;
+  }
+
+  toEventTag() {
     return ["t", this.tag];
+  }
+}
+
+export class UnknownTag implements ToNostrEventTag {
+  constructor(readonly value: Array<string>) {}
+
+  equals(other: ToNostrEventTag): boolean {
+    const otherTag = other.toEventTag();
+    return otherTag?.at(0) === this.value.at(0) && otherTag?.at(1) === this.value.at(1);
+  }
+
+  toEventTag(): string[] | undefined {
+    return this.value;
   }
 }
 
@@ -31,6 +53,7 @@ export class NostrLink implements ToNostrEventTag {
     readonly kind?: number,
     readonly author?: string,
     readonly relays?: Array<string>,
+    readonly marker?: string,
   ) {
     if (type !== NostrPrefix.Address && !isHex(id)) {
       throw new Error("ID must be hex");
@@ -52,22 +75,43 @@ export class NostrLink implements ToNostrEventTag {
     }
   }
 
-  toEventTag(marker?: string) {
-    const relayEntry = this.relays?.at(0) ? [this.relays[0]] : [];
+  get tagKey() {
+    if (this.type === NostrPrefix.Address) {
+      return `${this.kind}:${this.author}:${this.id}`;
+    }
+    return this.id;
+  }
 
+  /**
+   * Create an event tag for this link
+   */
+  toEventTag(marker?: string) {
+    const suffix: Array<string> = [];
+    if (this.relays && this.relays.length > 0) {
+      suffix.push(this.relays[0]);
+    }
     if (marker) {
-      if (relayEntry.length === 0) {
-        relayEntry.push("");
+      if (suffix[0] === undefined) {
+        suffix.push(""); // empty relay hint
       }
-      relayEntry.push(marker);
+      suffix.push(marker);
     }
 
     if (this.type === NostrPrefix.PublicKey || this.type === NostrPrefix.Profile) {
-      return ["p", this.id, ...relayEntry];
+      return ["p", this.id, ...suffix];
     } else if (this.type === NostrPrefix.Note || this.type === NostrPrefix.Event) {
-      return ["e", this.id, ...relayEntry];
+      if (this.author) {
+        if (suffix[0] === undefined) {
+          suffix.push(""); // empty relay hint
+        }
+        if (suffix[1] === undefined) {
+          suffix.push(""); // empty marker
+        }
+        suffix.push(this.author);
+      }
+      return ["e", this.id, ...suffix];
     } else if (this.type === NostrPrefix.Address) {
-      return ["a", `${this.kind}:${this.author}:${this.id}`, ...relayEntry];
+      return ["a", `${this.kind}:${this.author}:${this.id}`, ...suffix];
     }
   }
 
@@ -78,7 +122,10 @@ export class NostrLink implements ToNostrEventTag {
         return true;
       }
     } else if (this.type === NostrPrefix.Event || this.type === NostrPrefix.Note) {
-      return this.id === ev.id;
+      const ifSetCheck = <T>(a: T | undefined, b: T) => {
+        return !Boolean(a) || a === b;
+      };
+      return ifSetCheck(this.id, ev.id) && ifSetCheck(this.author, ev.pubkey) && ifSetCheck(this.kind, ev.kind);
     }
 
     return false;
@@ -90,22 +137,9 @@ export class NostrLink implements ToNostrEventTag {
   isReplyToThis(ev: NostrEvent) {
     const NonNip10Kinds = [EventKind.Reaction, EventKind.Repost, EventKind.ZapReceipt];
     if (NonNip10Kinds.includes(ev.kind)) {
-      const lastRef = ev.tags.findLast(a => a[0] === "e" || a[0] === "a");
-      if (!lastRef) return false;
-
-      if (
-        lastRef[0] === "e" &&
-        lastRef[1] === this.id &&
-        (this.type === NostrPrefix.Event || this.type === NostrPrefix.Note)
-      ) {
-        return true;
-      }
-      if (lastRef[0] === "a" && this.type === NostrPrefix.Address) {
-        const [kind, author, dTag] = lastRef[1].split(":");
-        if (Number(kind) === this.kind && author === this.author && dTag === this.id) {
-          return true;
-        }
-      }
+      const links = removeUndefined(ev.tags.filter(a => a[0] === "e" || a[0] === "a").map(a => NostrLink.fromTag(a)));
+      if (links.length === 0) return false;
+      return links.some(a => a.equals(this));
     } else {
       const thread = EventExt.extractThread(ev);
       if (!thread) return false; // non-thread events are not replies
@@ -155,52 +189,48 @@ export class NostrLink implements ToNostrEventTag {
   }
 
   equals(other: NostrLink) {
-    if (other.type === this.type && this.type === NostrPrefix.Address) {
-    }
+    return other.tagKey === this.tagKey;
   }
 
-  static fromThreadTag(tag: Tag) {
-    const relay = tag.relay ? [tag.relay] : undefined;
-
-    switch (tag.key) {
-      case "e": {
-        return new NostrLink(NostrPrefix.Event, unwrap(tag.value), undefined, undefined, relay);
-      }
-      case "p": {
-        return new NostrLink(NostrPrefix.Profile, unwrap(tag.value), undefined, undefined, relay);
-      }
-      case "a": {
-        const [kind, author, dTag] = unwrap(tag.value).split(":");
-        return new NostrLink(NostrPrefix.Address, dTag, Number(kind), author, relay);
-      }
-    }
-    throw new Error(`Unknown tag kind ${tag.key}`);
-  }
-
-  static fromTag(tag: Array<string>) {
+  static fromTag(tag: Array<string>, author?: string, kind?: number) {
     const relays = tag.length > 2 ? [tag[2]] : undefined;
     switch (tag[0]) {
       case "e": {
-        return new NostrLink(NostrPrefix.Event, tag[1], undefined, undefined, relays);
+        return new NostrLink(NostrPrefix.Event, tag[1], kind, author ?? tag[4], relays, tag[3]);
       }
       case "p": {
-        return new NostrLink(NostrPrefix.Profile, tag[1], undefined, undefined, relays);
+        return new NostrLink(NostrPrefix.Profile, tag[1], kind, author, relays);
       }
       case "a": {
         const [kind, author, dTag] = tag[1].split(":");
-        return new NostrLink(NostrPrefix.Address, dTag, Number(kind), author, relays);
+        return new NostrLink(NostrPrefix.Address, dTag, Number(kind), author, relays, tag[3]);
       }
     }
-    throw new Error(`Unknown tag kind ${tag[0]}`);
+    throw new Error("Unknown tag!");
   }
 
-  static fromTags(tags: Array<Array<string>>) {
+  static fromTags(tags: ReadonlyArray<Array<string>>) {
     return removeUndefined(
       tags.map(a => {
         try {
           return NostrLink.fromTag(a);
         } catch {
           // ignored, cant be mapped
+        }
+      }),
+    );
+  }
+
+  /**
+   * Parse all tags even if they are unknown
+   */
+  static fromAllTags(tags: ReadonlyArray<Array<string>>): Array<ToNostrEventTag> {
+    return removeUndefined(
+      tags.map(a => {
+        try {
+          return NostrLink.fromTag(a);
+        } catch {
+          return new UnknownTag(a);
         }
       }),
     );
@@ -214,6 +244,14 @@ export class NostrLink implements ToNostrEventTag {
       return new NostrLink(NostrPrefix.Address, dTag, ev.kind, ev.pubkey, relays);
     }
     return new NostrLink(NostrPrefix.Event, ev.id, ev.kind, ev.pubkey, relays);
+  }
+
+  static profile(pk: string, relays?: Array<string>) {
+    return new NostrLink(NostrPrefix.Profile, pk, undefined, undefined, relays);
+  }
+
+  static publicKey(pk: string, relays?: Array<string>) {
+    return new NostrLink(NostrPrefix.PublicKey, pk, undefined, undefined, relays);
   }
 }
 

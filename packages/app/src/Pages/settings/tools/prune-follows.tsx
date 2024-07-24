@@ -7,7 +7,6 @@ import AsyncButton from "@/Components/Button/AsyncButton";
 import ProfileImage from "@/Components/User/ProfileImage";
 import useEventPublisher from "@/Hooks/useEventPublisher";
 import useFollowsControls from "@/Hooks/useFollowControls";
-import useLogin from "@/Hooks/useLogin";
 import { Day } from "@/Utils/Const";
 
 import { FollowsRelayHealth } from "./follows-relay-health";
@@ -18,14 +17,13 @@ const enum PruneStage {
 }
 
 export function PruneFollowList() {
-  const { follows } = useLogin(s => ({ id: s.id, follows: s.follows }));
+  const followControls = useFollowsControls();
   const { system } = useEventPublisher();
-  const uniqueFollows = dedupe(follows.item);
+  const uniqueFollows = dedupe(followControls.followList);
   const [status, setStatus] = useState<PruneStage>();
   const [progress, setProgress] = useState(0);
   const [lastPost, setLastPosts] = useState<Record<string, number>>();
   const [unfollow, setUnfollow] = useState<Array<string>>([]);
-  const followControls = useFollowsControls();
 
   async function fetchLastPosts() {
     setStatus(PruneStage.FetchLastPostTimestamp);
@@ -101,7 +99,7 @@ export function PruneFollowList() {
           onChange={e => setUnfollow(v => (e.target.checked ? dedupe([...v, k]) : v.filter(a => a !== k)))}
           checked={unfollow.includes(k)}
         />
-        <FormattedMessage defaultMessage="Unfollow" id="izWS4J" />
+        <FormattedMessage defaultMessage="Unfollow" />
       </div>
     );
   }
@@ -109,7 +107,7 @@ export function PruneFollowList() {
   return (
     <div className="flex flex-col gap-4">
       <div className="text-2xl font-semibold">
-        <FormattedMessage defaultMessage="Prune follow list" id="CM0k0d" />
+        <FormattedMessage defaultMessage="Prune follow list" />
       </div>
       <p>
         <FormattedMessage
@@ -122,14 +120,14 @@ export function PruneFollowList() {
           defaultMessage="{x} follows ({y} duplicates)"
           id="iICVoL"
           values={{
-            x: follows.item.length,
-            y: follows.item.length - uniqueFollows.length,
+            x: followControls.followList.length,
+            y: followControls.followList.length - uniqueFollows.length,
           }}
         />
       </div>
       <FollowsRelayHealth withTitle={false} popularRelays={false} missingRelaysActions={k => personToggle(k)} />
       <AsyncButton onClick={fetchLastPosts}>
-        <FormattedMessage defaultMessage="Compute prune list" id="bJ+wrA" />
+        <FormattedMessage defaultMessage="Compute prune list" />
       </AsyncButton>
       {getStatus()}
       <div className="flex flex-col gap-1">
@@ -164,7 +162,7 @@ export function PruneFollowList() {
           />
         </p>
         <AsyncButton onClick={publishFollowList}>
-          <FormattedMessage defaultMessage="Save" id="jvo0vs" />
+          <FormattedMessage defaultMessage="Save" />
         </AsyncButton>
       </div>
     </div>

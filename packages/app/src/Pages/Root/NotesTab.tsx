@@ -1,17 +1,17 @@
-import { NostrLink } from "@snort/system";
+import { NostrEvent, NostrLink } from "@snort/system";
 import { useContext, useMemo } from "react";
 import { FormattedMessage } from "react-intl";
 import { Link } from "react-router-dom";
 
 import TimelineFollows from "@/Components/Feed/TimelineFollows";
 import { TaskList } from "@/Components/Tasks/TaskList";
-import useLogin from "@/Hooks/useLogin";
+import useFollowsControls from "@/Hooks/useFollowControls";
 import { DeckContext } from "@/Pages/Deck/DeckLayout";
 import messages from "@/Pages/messages";
 
 const FollowsHint = () => {
-  const { publicKey: pubKey, follows } = useLogin();
-  if (follows.item?.length === 0 && pubKey) {
+  const { followList } = useFollowsControls();
+  if (followList.length === 0) {
     return (
       <FormattedMessage
         {...messages.NoFollows}
@@ -25,15 +25,15 @@ const FollowsHint = () => {
       />
     );
   }
-  return null;
 };
+
 export const NotesTab = () => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const deckContext = useContext(DeckContext);
 
   const noteOnClick = useMemo(() => {
     if (deckContext) {
-      return ev => {
+      return (ev: NostrEvent) => {
         deckContext.setThread(NostrLink.fromEvent(ev));
       };
     }

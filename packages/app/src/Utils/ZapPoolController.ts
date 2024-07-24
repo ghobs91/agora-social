@@ -1,11 +1,12 @@
 import { ExternalStore, LNURL, unixNow } from "@snort/shared";
+import { LNWallet, WalletInvoiceState } from "@snort/wallet";
 import debug from "debug";
 
 import { UserCache } from "@/Cache";
 import { Toastore } from "@/Components/Toaster/Toaster";
 import { SnortPubKey } from "@/Utils/Const";
 import { bech32ToHex, getDisplayName, trackEvent } from "@/Utils/index";
-import { LNWallet, WalletInvoiceState, Wallets } from "@/Wallet";
+import { Wallets } from "@/Wallet";
 
 export enum ZapPoolRecipientType {
   Generic = 0,
@@ -133,12 +134,12 @@ class ZapPool extends ExternalStore<Array<ZapPoolRecipient>> {
   }
 
   #save() {
-    self.localStorage.setItem("zap-pool", JSON.stringify(this.takeSnapshot()));
-    self.localStorage.setItem("zap-pool-last-payout", this.#lastPayout.toString());
+    globalThis.localStorage.setItem("zap-pool", JSON.stringify(this.takeSnapshot()));
+    globalThis.localStorage.setItem("zap-pool-last-payout", this.#lastPayout.toString());
   }
 
   #load() {
-    const existing = self.localStorage.getItem("zap-pool");
+    const existing = globalThis.localStorage.getItem("zap-pool");
     if (existing) {
       const arr = JSON.parse(existing) as Array<ZapPoolRecipient>;
       this.#store = new Map(arr.map(a => [`${a.pubkey}-${a.type}`, a]));
@@ -156,7 +157,7 @@ class ZapPool extends ExternalStore<Array<ZapPoolRecipient>> {
       ]);
     }
 
-    const lastPayout = self.localStorage.getItem("zap-pool-last-payout");
+    const lastPayout = globalThis.localStorage.getItem("zap-pool-last-payout");
     if (lastPayout) {
       this.#lastPayout = Number(lastPayout);
     }

@@ -1,12 +1,23 @@
+/* eslint-disable max-lines */
 import * as utils from "@noble/curves/abstract/utils";
 import * as secp from "@noble/curves/secp256k1";
 import { ExternalStore, unwrap } from "@snort/shared";
-import { EventPublisher, HexKey, KeyStorage, NotEncrypted, RelaySettings, socialGraphInstance } from "@snort/system";
+import {
+  EventKind,
+  EventPublisher,
+  HexKey,
+  KeyStorage,
+  NotEncrypted,
+  RelaySettings,
+  socialGraphInstance,
+  UserState,
+  UserStateObject,
+} from "@snort/system";
 import { v4 as uuid } from "uuid";
 
-import { createPublisher, LoginSession, LoginSessionType } from "@/Utils/Login/index";
+import { createPublisher, LoginSession, LoginSessionType, SnortAppData } from "@/Utils/Login/index";
 
-import { DefaultPreferences, UserPreferences } from "./Preferences";
+import { DefaultPreferences } from "./Preferences";
 
 const AccountStoreKey = "sessions";
 const LoggedOut = {
@@ -14,10 +25,6 @@ const LoggedOut = {
   type: "public_key",
   readonly: true,
   tags: {
-    item: [],
-    timestamp: 0,
-  },
-  follows: {
     item: [],
     timestamp: 0,
   },
@@ -44,16 +51,15 @@ const LoggedOut = {
   latestNotification: 0,
   readNotifications: 0,
   subscriptions: [],
-  appData: {
-    item: {
-      mutedWords: [],
-      preferences: DefaultPreferences,
-      showContentWarningPosts: false,
-    },
-    timestamp: 0,
-  },
   extraChats: [],
   stalker: false,
+  state: new UserState<SnortAppData>("", {
+    initAppdata: {
+      preferences: DefaultPreferences,
+    },
+    encryptAppdata: true,
+    appdataId: "snort",
+  }),
 } as LoginSession;
 
 export class MultiAccountStore extends ExternalStore<LoginSession> {
@@ -63,7 +69,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
 
   constructor() {
     super();
-    if (typeof ServiceWorkerGlobalScope !== "undefined" && self instanceof ServiceWorkerGlobalScope) {
+    if (typeof ServiceWorkerGlobalScope !== "undefined" && globalThis instanceof ServiceWorkerGlobalScope) {
       // return if sw. we might want to use localForage (idb) to share keys between sw and app
       return;
     }
@@ -87,18 +93,33 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
       if (v.type === LoginSessionType.PrivateKey && v.readonly) {
         v.readonly = false;
       }
-      // fill possibly undefined (migrate up)
-      v.appData ??= {
-        item: {
-          mutedWords: [],
-          showContentWarningPosts: false,
-          preferences: DefaultPreferences,
-        },
-        timestamp: 0,
-      };
       v.extraChats ??= [];
       if (v.privateKeyData) {
         v.privateKeyData = KeyStorage.fromPayload(v.privateKeyData as object);
+      }
+      const stateObj = v.state as unknown as UserStateObject<SnortAppData> | undefined;
+      const stateClass = new UserState<SnortAppData>(
+        v.publicKey!,
+        {
+          initAppdata: stateObj?.appdata ?? {
+            preferences: {
+              ...DefaultPreferences,
+              ...CONFIG.defaultPreferences,
+            },
+          },
+          encryptAppdata: true,
+          appdataId: "snort",
+        },
+        stateObj,
+      );
+      stateClass.checkIsStandardList(EventKind.StorageServerList); // track nip96 list
+      stateClass.on("change", () => this.#save());
+      v.state = stateClass;
+
+      // always activate signer
+      const signer = createPublisher(v);
+      if (signer) {
+        this.#publishers.set(v.id, signer);
       }
     }
     this.#loadIrisKeyIfExists();
@@ -163,18 +184,26 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
         item: initRelays,
         timestamp: 1,
       },
-      preferences: {
-        ...DefaultPreferences,
-        ...CONFIG.defaultPreferences,
-      },
+      state: new UserState<SnortAppData>(key, {
+        initAppdata: {
+          preferences: {
+            ...DefaultPreferences,
+            ...CONFIG.defaultPreferences,
+          },
+        },
+        encryptAppdata: true,
+        appdataId: "snort",
+      }),
       remoteSignerRelays,
       privateKeyData: privateKey,
       stalker: stalker ?? false,
     } as LoginSession;
 
+    newSession.state.checkIsStandardList(EventKind.StorageServerList); // track nip96 list
+    newSession.state.on("change", () => this.#save());
     const pub = createPublisher(newSession);
     if (pub) {
-      this.setPublisher(newSession.id, pub);
+      this.#publishers.set(newSession.id, pub);
     }
     this.#accounts.set(newSession.id, newSession);
     this.#activeAccount = newSession.id;
@@ -209,11 +238,19 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
         item: initRelays,
         timestamp: 1,
       },
-      preferences: {
-        ...DefaultPreferences,
-        ...CONFIG.defaultPreferences,
-      },
+      state: new UserState<SnortAppData>(pubKey, {
+        initAppdata: {
+          preferences: {
+            ...DefaultPreferences,
+            ...CONFIG.defaultPreferences,
+          },
+        },
+        encryptAppdata: true,
+        appdataId: "snort",
+      }),
     } as LoginSession;
+    newSession.state.checkIsStandardList(EventKind.StorageServerList); // track nip96 list
+    newSession.state.on("change", () => this.#save());
 
     if ("nostr_os" in window && window?.nostr_os) {
       window?.nostr_os.saveKey(key.value);
@@ -221,7 +258,7 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
       newSession.privateKeyData = undefined;
     }
     const pub = EventPublisher.privateKey(key.value);
-    this.setPublisher(newSession.id, pub);
+    this.#publishers.set(newSession.id, pub);
 
     this.#accounts.set(newSession.id, newSession);
     this.#activeAccount = newSession.id;
@@ -271,41 +308,57 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
   #migrate() {
     let didMigrate = false;
 
-    // update session types
-    for (const [, v] of this.#accounts) {
-      if (!v.type) {
-        v.type = v.privateKey ? LoginSessionType.PrivateKey : LoginSessionType.Nip7;
+    // delete some old keys
+    for (const [, acc] of this.#accounts) {
+      if ("appData" in acc) {
+        delete acc["appData"];
         didMigrate = true;
       }
-    }
-
-    // add ids
-    for (const [, v] of this.#accounts) {
-      if ((v.id?.length ?? 0) === 0) {
-        v.id = uuid();
+      if ("contacts" in acc) {
+        delete acc["contacts"];
         didMigrate = true;
       }
-    }
-
-    // mark readonly
-    for (const [, v] of this.#accounts) {
-      if (v.type === LoginSessionType.PublicKey && !v.readonly) {
-        v.readonly = true;
+      if ("follows" in acc) {
+        delete acc["follows"];
         didMigrate = true;
       }
-      // reset readonly on load
-      if (v.type === LoginSessionType.PrivateKey && v.readonly) {
-        v.readonly = false;
+      if ("relays" in acc) {
+        delete acc["relays"];
         didMigrate = true;
       }
-    }
-
-    // move preferences to appdata
-    for (const [, v] of this.#accounts) {
-      if ("preferences" in v) {
-        v.appData.item.preferences = v.preferences as UserPreferences;
-        delete v["preferences"];
+      if ("blocked" in acc) {
+        delete acc["blocked"];
         didMigrate = true;
+      }
+      if ("bookmarked" in acc) {
+        delete acc["bookmarked"];
+        didMigrate = true;
+      }
+      if ("muted" in acc) {
+        delete acc["muted"];
+        didMigrate = true;
+      }
+      if ("pinned" in acc) {
+        delete acc["pinned"];
+        didMigrate = true;
+      }
+      if ("tags" in acc) {
+        delete acc["tags"];
+        didMigrate = true;
+      }
+      if (acc.state && acc.state.appdata) {
+        if ("id" in acc.state.appdata) {
+          delete acc.state.appdata["id"];
+          didMigrate = true;
+        }
+        if ("mutedWords" in acc.state.appdata) {
+          delete acc.state.appdata["mutedWords"];
+          didMigrate = true;
+        }
+        if ("showContentWarningPosts" in acc.state.appdata) {
+          delete acc.state.appdata["showContentWarningPosts"];
+          didMigrate = true;
+        }
       }
     }
 
@@ -324,13 +377,18 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
       if (v.privateKeyData instanceof KeyStorage) {
         toSave.push({
           ...v,
+          state: v.state instanceof UserState ? v.state.serialize() : v.state,
           privateKeyData: v.privateKeyData.toPayload(),
         });
       } else {
-        toSave.push({ ...v });
+        toSave.push({
+          ...v,
+          state: v.state instanceof UserState ? v.state.serialize() : v.state,
+        });
       }
     }
 
+    console.debug("Trying to save", toSave);
     window.localStorage.setItem(AccountStoreKey, JSON.stringify(toSave));
     this.notifyChange();
   }

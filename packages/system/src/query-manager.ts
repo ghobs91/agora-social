@@ -1,9 +1,9 @@
 import debug from "debug";
 import { EventEmitter } from "eventemitter3";
-import { BuiltRawReqFilter, RequestBuilder, RequestStrategy, SystemInterface, TaggedNostrEvent } from ".";
+import { BuiltRawReqFilter, FlatReqFilter, ReqFilter, RequestBuilder, SystemInterface, TaggedNostrEvent } from ".";
 import { Query, TraceReport } from "./query";
-import { FilterCacheLayer, IdsFilterCacheLayer } from "./filter-cache-layer";
 import { trimFilters } from "./request-trim";
+import { eventMatchesFilter, isRequestSatisfied } from "./request-matcher";
 
 interface QueryManagerEvents {
   change: () => void;
@@ -27,15 +27,9 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
    */
   #system: SystemInterface;
 
-  /**
-   * Query cache processing layers which can take data from a cache
-   */
-  #queryCacheLayers: Array<FilterCacheLayer> = [];
-
   constructor(system: SystemInterface) {
     super();
     this.#system = system;
-    this.#queryCacheLayers.push(new IdsFilterCacheLayer(system.eventsCache));
 
     setInterval(() => this.#cleanup(), 1_000);
   }
@@ -55,11 +49,10 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
       }
       return existing;
     } else {
-      const q = new Query(this.#system, req);
+      const q = new Query(req);
       q.on("trace", r => this.emit("trace", r));
       q.on("request", (id, fx) => {
         this.#send(q, fx);
-        this.emit("request", id, fx);
       });
 
       this.#queries.set(req.id, q);
@@ -76,26 +69,19 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
    * Async fetch results
    */
   async fetch(req: RequestBuilder, cb?: (evs: Array<TaggedNostrEvent>) => void) {
-    const q = new Query(this.#system, req);
-    q.on("trace", r => this.emit("trace", r));
-    q.on("request", (subId, fx) => {
-      this.#send(q, fx);
-    });
+    const filters = req.buildRaw();
+    const q = this.query(req);
     if (cb) {
-      q.on("event", evs => cb(evs));
+      q.on("event", cb);
     }
     await new Promise<void>(resolve => {
-      q.on("loading", loading => {
-        this.#log("loading %s %o", q.id, loading);
-        if (!loading) {
-          resolve();
-        }
-      });
+      q.once("done", resolve);
     });
     const results = q.feed.takeSnapshot();
-    q.cleanup();
-    this.#log("Fetch results for %s %o", q.id, results);
-    return results;
+    if (cb) {
+      q.off("event", cb);
+    }
+    return results.filter(a => filters.some(b => eventMatchesFilter(a, b)));
   }
 
   *[Symbol.iterator]() {
@@ -104,66 +90,109 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
     }
   }
 
-  async #send(q: Query, qSend: BuiltRawReqFilter) {
-    for (const qfl of this.#queryCacheLayers) {
-      qSend = await qfl.processFilter(q, qSend);
-    }
-    if (this.#system.cacheRelay) {
-      // fetch results from cache first, flag qSend for sync
-      const data = await this.#system.cacheRelay.query(["REQ", q.id, ...qSend.filters]);
-      if (data.length > 0) {
-        qSend.syncFrom = data as Array<TaggedNostrEvent>;
-        q.feed.add(data as Array<TaggedNostrEvent>);
-      }
-    }
+  async #send(q: Query, filters: Array<ReqFilter>) {
+    // check for empty filters
+    filters = trimFilters(filters);
 
     // automated outbox model, load relays for queried authors
-    for (const f of qSend.filters) {
+    for (const f of filters) {
       if (f.authors) {
         this.#system.relayLoader.TrackKeys(f.authors);
       }
     }
 
-    // check for empty filters
-    const fNew = trimFilters(qSend.filters);
-    if (fNew.length === 0) {
-      this.#log("Dropping %s %o", q.id, qSend);
+    let syncFrom: Array<TaggedNostrEvent> = [];
+    // fetch results from cache first, flag qSend for sync
+    if (this.#system.cacheRelay) {
+      const data = await this.#system.cacheRelay.query(["REQ", q.id, ...filters]);
+      if (data.length > 0) {
+        syncFrom = data.map(a => ({ ...a, relays: [] }));
+        this.#log("Adding from cache %s %O", q.id, data);
+        q.feed.add(syncFrom);
+      }
+    }
+
+    // remove satisfied filters
+    if (syncFrom.length > 0) {
+      // only remove the "ids" filters
+      const newFilters = filters.filter(a => !isRequestSatisfied(a, syncFrom));
+      if (newFilters.length !== filters.length) {
+        this.#log("Removing satisfied filters %o %o", newFilters, filters);
+        filters = newFilters;
+      }
+    }
+
+    // nothing left to send
+    if (filters.length === 0) {
+      this.#log("Dropping %s %o", q.id);
       return;
     }
-    qSend.filters = fNew;
 
+    if (this.#system.requestRouter) {
+      filters = this.#system.requestRouter.forAllRequest(filters);
+    }
+    const expanded = filters.flatMap(a => this.#system.optimizer.expandFilter(a));
+    const qSend = this.#groupFlatByRelay(expanded);
+    qSend.forEach(a => (a.syncFrom = syncFrom));
+    await Promise.all(qSend.map(a => this.#sendToRelays(q, a)));
+  }
+
+  #groupFlatByRelay(filters: Array<FlatReqFilter>) {
+    const relayMerged = filters.reduce((acc, v) => {
+      const relay = v.relay ?? "";
+      // delete relay from filter
+      delete v.relay;
+      const existing = acc.get(relay);
+      if (existing) {
+        existing.push(v);
+      } else {
+        acc.set(relay, [v]);
+      }
+      return acc;
+    }, new Map<string, Array<FlatReqFilter>>());
+
+    const ret = [];
+    for (const [k, v] of relayMerged.entries()) {
+      const filters = this.#system.optimizer.flatMerge(v);
+      ret.push({
+        relay: k,
+        filters,
+      } as BuiltRawReqFilter);
+    }
+    return ret;
+  }
+
+  async #sendToRelays(q: Query, qSend: BuiltRawReqFilter) {
     if (qSend.relay) {
-      this.#log("Sending query to %s %s %O", qSend.relay, q.id, qSend);
-      const s = this.#system.pool.getConnection(qSend.relay);
-      if (s) {
-        const qt = q.sendToRelay(s, qSend);
+      const nc = await this.#system.pool.connect(qSend.relay, { read: true, write: true }, true);
+      if (nc) {
+        const qt = q.sendToRelay(nc, qSend);
         if (qt) {
+          this.#log("Sent query %s to %s %s %O", qt.id, qSend.relay, q.id, qSend);
           return [qt];
+        } else {
+          this.#log("Query not sent to %s: %O", qSend.relay, qSend);
         }
       } else {
-        const nc = await this.#system.pool.connect(qSend.relay, { read: true, write: true }, true);
-        if (nc) {
-          const qt = q.sendToRelay(nc, qSend);
-          if (qt) {
-            return [qt];
-          }
-        } else {
-          console.warn("Failed to connect to new relay for:", qSend.relay, q);
-        }
+        console.warn("Failed to connect to new relay for:", qSend.relay, q);
       }
     } else {
       const ret = [];
       for (const [a, s] of this.#system.pool) {
-        if (!s.Ephemeral) {
-          this.#log("Sending query to %s %s %O", a, q.id, qSend);
+        if (!s.ephemeral) {
           const qt = q.sendToRelay(s, qSend);
           if (qt) {
+            this.#log("Sent query %s to %s %s %O", qt.id, qSend.relay, q.id, qSend);
             ret.push(qt);
+          } else {
+            this.#log("Query not sent to %s: %O", a, qSend);
           }
         }
       }
       return ret;
     }
+
+    this.emit("request", q.id, qSend);
   }
 
   #cleanup() {
