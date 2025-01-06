@@ -4,7 +4,7 @@ import { ReactNode, useState } from "react";
 import Icon from "@/Components/Icons/Icon";
 
 interface CollapsedProps {
-  text?: string;
+  text?: ReactNode;
   children: ReactNode;
   collapsed: boolean;
   setCollapsed(b: boolean): void;
@@ -33,10 +33,11 @@ interface CollapsedSectionProps {
   title: ReactNode;
   children: ReactNode;
   className?: string;
+  startClosed?: boolean;
 }
 
-export const CollapsedSection = ({ title, children, className }: CollapsedSectionProps) => {
-  const [collapsed, setCollapsed] = useState(true);
+export const CollapsedSection = ({ title, children, className, startClosed }: CollapsedSectionProps) => {
+  const [collapsed, setCollapsed] = useState(startClosed ?? true);
   const icon = (
     <div className={classNames("collapse-icon", { flip: !collapsed })}>
       <Icon name="arrowFront" />

@@ -9,7 +9,6 @@ import {
   KeyStorage,
   NotEncrypted,
   RelaySettings,
-  socialGraphInstance,
   UserState,
   UserStateObject,
 } from "@snort/system";
@@ -17,7 +16,7 @@ import { v4 as uuid } from "uuid";
 
 import { createPublisher, LoginSession, LoginSessionType, SnortAppData } from "@/Utils/Login/index";
 
-import { DefaultPreferences } from "./Preferences";
+import { DefaultPreferences, UserPreferences } from "./Preferences";
 
 const AccountStoreKey = "sessions";
 const LoggedOut = {
@@ -84,10 +83,6 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     if (!this.#activeAccount) {
       this.#activeAccount = this.#accounts.keys().next().value;
     }
-    if (this.#activeAccount) {
-      const pubKey = this.#accounts.get(this.#activeAccount)?.publicKey;
-      socialGraphInstance.setRoot(pubKey || "");
-    }
     for (const [, v] of this.#accounts) {
       // reset readonly on load
       if (v.type === LoginSessionType.PrivateKey && v.readonly) {
@@ -146,8 +141,6 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
   switchAccount(id: string) {
     if (this.#accounts.has(id)) {
       this.#activeAccount = id;
-      const pubKey = this.#accounts.get(id)?.publicKey || "";
-      socialGraphInstance.setRoot(pubKey);
       this.#save();
     }
   }
@@ -172,7 +165,6 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     if (this.#accounts.has(key)) {
       throw new Error("Already logged in with this pubkey");
     }
-    socialGraphInstance.setRoot(key);
     const initRelays = this.decideInitRelays(relays);
     const newSession = {
       ...LoggedOut,
@@ -224,7 +216,6 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
     if (this.#accounts.has(pubKey)) {
       throw new Error("Already logged in with this pubkey");
     }
-    socialGraphInstance.setRoot(pubKey);
     const initRelays = this.decideInitRelays(relays);
     const newSession = {
       ...LoggedOut,
@@ -358,6 +349,13 @@ export class MultiAccountStore extends ExternalStore<LoginSession> {
         if ("showContentWarningPosts" in acc.state.appdata) {
           delete acc.state.appdata["showContentWarningPosts"];
           didMigrate = true;
+        }
+
+        if (acc.state.appdata.preferences) {
+          if (!("muteWithWoT" in acc.state.appdata.preferences)) {
+            (acc.state.appdata.preferences as UserPreferences)["muteWithWoT"] = true;
+            didMigrate = true;
+          }
         }
       }
     }

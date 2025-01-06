@@ -13,20 +13,19 @@ import {
   UserMetadata,
 } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useEmptyChatSystem } from "@/Hooks/useEmptyChatSystem";
+import useEventPublisher from "@/Hooks/useEventPublisher";
 import useLogin from "@/Hooks/useLogin";
 import useModeration from "@/Hooks/useModeration";
 import { findTag } from "@/Utils";
 import { LoginSession } from "@/Utils/Login";
 
-import { Nip4Chats, Nip4ChatSystem } from "./nip4";
 import { Nip17Chats, Nip17ChatSystem } from "./nip17";
 import { Nip28Chats, Nip28ChatSystem } from "./nip28";
 
 export enum ChatType {
-  DirectMessage = 1,
   PublicGroupChat = 2,
   PrivateGroupChat = 3,
   PrivateDirectMessage = 4,
@@ -64,12 +63,17 @@ export interface ChatSystem {
   /**
    * Create a request for this system to get updates
    */
-  subscription(session: LoginSession): RequestBuilder | undefined;
+  subscription(session: LoginSession): RequestBuilder;
 
   /**
    * Create a list of chats for a given pubkey and set of events
    */
   listChats(pk: string, evs: Array<TaggedNostrEvent>): Array<Chat>;
+
+  /**
+   * Process events received from the subscription
+   */
+  processEvents(pub: EventPublisher, evs: Array<TaggedNostrEvent>): Promise<void>;
 }
 
 /**
@@ -110,31 +114,17 @@ export function setLastReadIn(id: string) {
 
 export function createChatLink(type: ChatType, ...params: Array<string>) {
   switch (type) {
-    case ChatType.DirectMessage: {
-      if (params.length > 1) throw new Error("Must only contain one pubkey");
-      return `/messages/${encodeTLVEntries(
-        "chat4" as NostrPrefix,
-        {
-          type: TLVEntryType.Author,
-          length: params[0].length,
-          value: params[0],
-        } as TLVEntry,
-      )}`;
-    }
     case ChatType.PrivateDirectMessage: {
       if (params.length > 1) throw new Error("Must only contain one pubkey");
-      return `/messages/${encodeTLVEntries(
-        "chat17" as NostrPrefix,
-        {
-          type: TLVEntryType.Author,
-          length: params[0].length,
-          value: params[0],
-        } as TLVEntry,
-      )}`;
+      return `/messages/${encodeTLVEntries(NostrPrefix.Chat17, {
+        type: TLVEntryType.Author,
+        length: params[0].length,
+        value: params[0],
+      } as TLVEntry)}`;
     }
     case ChatType.PrivateGroupChat: {
       return `/messages/${encodeTLVEntries(
-        "chat17" as NostrPrefix,
+        NostrPrefix.Chat17,
         ...params.map(
           a =>
             ({
@@ -153,13 +143,10 @@ export function createChatLink(type: ChatType, ...params: Array<string>) {
 }
 
 export function createEmptyChatObject(id: string, messages?: Array<TaggedNostrEvent>) {
-  if (id.startsWith("chat41")) {
-    return Nip4ChatSystem.createChatObj(id, messages ?? []);
-  }
-  if (id.startsWith("chat171")) {
+  if (id.startsWith(NostrPrefix.Chat17)) {
     return Nip17ChatSystem.createChatObj(id, []);
   }
-  if (id.startsWith("chat281")) {
+  if (id.startsWith(NostrPrefix.Chat28)) {
     return Nip28ChatSystem.createChatObj(id, messages ?? []);
   }
   throw new Error("Cant create new empty chat, unknown id");
@@ -167,11 +154,18 @@ export function createEmptyChatObject(id: string, messages?: Array<TaggedNostrEv
 
 export function useChatSystem(chat: ChatSystem) {
   const login = useLogin();
+  const { publisher } = useEventPublisher();
   const sub = useMemo(() => {
     return chat.subscription(login);
   }, [chat, login]);
   const data = useRequestBuilder(sub);
   const { isMuted } = useModeration();
+
+  useEffect(() => {
+    if (publisher) {
+      chat.processEvents(publisher, data);
+    }
+  }, [data, publisher]);
 
   return useMemo(() => {
     if (login.publicKey) {
@@ -185,22 +179,18 @@ export function useChatSystem(chat: ChatSystem) {
 }
 
 export function useChatSystems() {
-  const nip4 = useChatSystem(Nip4Chats);
   const nip28 = useChatSystem(Nip28Chats);
   const nip17 = useChatSystem(Nip17Chats);
 
-  return [...nip4, ...nip28, ...nip17];
+  return [...nip28, ...nip17];
 }
 
 export function useChat(id: string) {
   const getStore = () => {
-    if (id.startsWith("chat41")) {
-      return Nip4Chats;
-    }
-    if (id.startsWith("chat171")) {
+    if (id.startsWith(NostrPrefix.Chat17)) {
       return Nip17Chats;
     }
-    if (id.startsWith("chat281")) {
+    if (id.startsWith(NostrPrefix.Chat28)) {
       return Nip28Chats;
     }
     throw new Error("Unsupported chat system");

@@ -38,13 +38,14 @@ Snort supports the following NIP's:
 - [x] NIP-50: Search
 - [x] NIP-51: Lists
 - [x] NIP-53: Live Events
+- [x] NIP-55: Android signer application
 - [x] NIP-57: Zaps
 - [x] NIP-58: Badges
 - [x] NIP-59: Gift Wrap
 - [x] NIP-65: Relay List Metadata
 - [x] NIP-75: Zap Goals
 - [x] NIP-78: App specific data
-- [ ] NIP-89: App handlers
+- [x] NIP-89: App handlers
 - [x] NIP-94: File Metadata
 - [x] NIP-96: HTTP File Storage Integration (Draft)
 - [x] NIP-98: HTTP Auth

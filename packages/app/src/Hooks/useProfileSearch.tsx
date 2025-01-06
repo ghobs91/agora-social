@@ -1,41 +1,15 @@
-import { socialGraphInstance } from "@snort/system";
-import { useEffect, useMemo, useState } from "react";
-
 import fuzzySearch from "@/Db/FuzzySearch";
-import useTimelineFeed, { TimelineFeedOptions, TimelineSubject } from "@/Feed/TimelineFeed";
-import { debounce } from "@/Utils";
 
-const options: TimelineFeedOptions = { method: "LIMIT_UNTIL" };
+import useWoT, { WoT } from "./useWoT";
 
-export default function useProfileSearch(search: string) {
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
-
-  useEffect(() => {
-    return debounce(500, () => {
-      setDebouncedSearch(search);
-    });
-  }, [search]);
-
-  const subject = useMemo(
-    () =>
-      ({
-        type: "profile_keyword",
-        items: debouncedSearch ? [debouncedSearch] : [],
-        discriminator: debouncedSearch,
-      }) as TimelineSubject,
-    [debouncedSearch],
-  );
-  const feed = useTimelineFeed(subject, options);
-  const results = useMemo(() => {
-    return userSearch(search);
-  }, [search, feed]);
-
-  return results;
+export default function useProfileSearch() {
+  const wot = useWoT();
+  return (search: string | undefined) => userSearch(wot, search);
 }
 
-export function userSearch(search: string) {
-  const searchString = search.trim();
-  const fuseResults = fuzzySearch.search(searchString);
+function userSearch(wot: WoT, search: string | undefined) {
+  const searchString = search?.trim() ?? "";
+  const fuseResults = (searchString?.length ?? 0) > 0 ? fuzzySearch.search(searchString) : [];
 
   const followDistanceNormalizationFactor = 3;
   const seenIds = new Set();
@@ -44,7 +18,7 @@ export function userSearch(search: string) {
     .map(result => {
       const fuseScore = result.score === undefined ? 1 : result.score;
 
-      const followDistance = wotScore(result.item.pubkey) / followDistanceNormalizationFactor;
+      const followDistance = wot.followDistance(result.item.pubkey) / followDistanceNormalizationFactor;
 
       const startsWithSearchString = [result.item.name, result.item.display_name, result.item.nip05].some(
         field => field && field.toLowerCase?.().startsWith(searchString.toLowerCase()),
@@ -71,12 +45,4 @@ export function userSearch(search: string) {
     });
 
   return combinedResults.map(r => r.item);
-}
-
-export function wotScore(pubkey: string) {
-  return socialGraphInstance.getFollowDistance(pubkey);
-}
-
-export function sortByWoT(pubkeys: Array<string>) {
-  return pubkeys.sort((a, b) => (wotScore(a) > wotScore(b) ? 1 : -1));
 }

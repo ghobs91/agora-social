@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useIntl } from "react-intl";
 
-import SuggestedProfiles from "@/Components/SuggestedProfiles";
-import { Tab, TabSelector } from "@/Components/TabSelectors/TabSelectors";
+import TabSelectors, { Tab } from "@/Components/TabSelectors/TabSelectors";
 import TrendingNotes from "@/Components/Trending/TrendingPosts";
 import TrendingUsers from "@/Components/Trending/TrendingUsers";
 
@@ -10,31 +9,28 @@ export default function Discover() {
   const { formatMessage } = useIntl();
   // tabs
   const Tabs = {
-    Follows: { text: formatMessage({ defaultMessage: "Suggested Follows", id: "C8HhVE" }), value: 0 },
-    Posts: { text: formatMessage({ defaultMessage: "Trending Notes", id: "Ix8l+B" }), value: 1 },
-    Profiles: { text: formatMessage({ defaultMessage: "Trending People", id: "CVWeJ6" }), value: 2 },
+    Posts: { text: formatMessage({ defaultMessage: "Trending Notes" }), value: 1 },
+    Profiles: { text: formatMessage({ defaultMessage: "Trending People" }), value: 0 },
   };
-  const [tab, setTab] = useState<Tab>(Tabs.Follows);
+  const [tab, setTab] = useState<Tab>(Tabs.Profiles);
 
   function renderTab() {
     switch (tab.value) {
-      case 0:
-        return <SuggestedProfiles />;
       case 1:
         return <TrendingNotes />;
-      case 2:
-        return <TrendingUsers />;
+      case 0:
+        return (
+          <div className="p">
+            <TrendingUsers />
+          </div>
+        );
     }
     return null;
   }
 
   return (
     <>
-      <div className="tabs p">
-        {[Tabs.Follows, Tabs.Posts, Tabs.Profiles].map(a => (
-          <TabSelector key={a.value} tab={tab} setTab={setTab} t={a} />
-        ))}
-      </div>
+      <TabSelectors tabs={[Tabs.Profiles, Tabs.Posts]} tab={tab} setTab={setTab} />
       {renderTab()}
     </>
   );

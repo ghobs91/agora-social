@@ -1,4 +1,4 @@
-import sqlite3InitModule, { Database, Sqlite3Static } from "@sqlite.org/sqlite-wasm";
+import sqlite3InitModule, { Database, SAHPoolUtil, Sqlite3Static } from "@sqlite.org/sqlite-wasm";
 import { EventEmitter } from "eventemitter3";
 import { EventMetadata, NostrEvent, RelayHandler, RelayHandlerEvents, ReqFilter, unixNowMs } from "../types";
 import migrate from "./migrations";
@@ -12,6 +12,7 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
   #sqlite?: Sqlite3Static;
   #log = (msg: string, ...args: Array<any>) => debugLog("SqliteRelay", msg, ...args);
   db?: Database;
+  #pool?: SAHPoolUtil;
   #seenInserts = new Set<string>();
 
   /**
@@ -45,13 +46,22 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
     if (!this.#sqlite) throw new Error("Must call init first");
     if (this.db) return;
 
-    const pool = await this.#sqlite.installOpfsSAHPoolVfs({});
-    this.db = new pool.OpfsSAHPoolDb(path);
+    this.#pool = await this.#sqlite.installOpfsSAHPoolVfs({});
+    this.db = new this.#pool.OpfsSAHPoolDb(path);
     this.#log(`Opened ${this.db.filename}`);
-    /*this.db.exec(
-      `PRAGMA cache_size=${32 * 1024
-      }; PRAGMA page_size=8192; PRAGMA journal_mode=MEMORY; PRAGMA temp_store=MEMORY;`,
-    );*/
+  }
+
+  /**
+   * Delete all data
+   */
+  async wipe() {
+    if (this.#pool && this.db) {
+      const dbName = this.db.filename;
+      this.close();
+      await this.#pool.wipeFiles();
+      await this.#open(dbName);
+      await migrate(this);
+    }
   }
 
   close() {
@@ -157,8 +167,15 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
         this.#deleteById(db, oldEvents);
       }
     }
-    db.exec("insert or ignore into events(id, pubkey, created, kind, json) values(?,?,?,?,?)", {
-      bind: [ev.id, ev.pubkey, ev.created_at, ev.kind, JSON.stringify(ev)],
+
+    // remove relays from event json
+    const evInsert = {
+      ...ev,
+    } as NostrEvent;
+    delete evInsert["relays"];
+
+    db.exec("insert or ignore into events(id, pubkey, created, kind, json, relays) values(?,?,?,?,?,?)", {
+      bind: [ev.id, ev.pubkey, ev.created_at, ev.kind, JSON.stringify(evInsert), (ev.relays ?? []).join(",")],
     });
     const insertedEvents = db.changes();
     if (insertedEvents > 0) {
@@ -169,10 +186,31 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
       }
       this.insertIntoSearchIndex(db, ev);
     } else {
+      this.#updateRelays(db, ev);
       return 0;
     }
     this.#seenInserts.add(ev.id);
     return insertedEvents;
+  }
+
+  /**
+   * Append relays
+   */
+  #updateRelays(db: Database, ev: NostrEvent) {
+    const relays = db.selectArrays("select relays from events where id = ?", [ev.id]);
+    const oldRelays = new Set((relays?.at(0)?.at(0) as string | null)?.split(",") ?? []);
+    let hasNew = false;
+    for (const r of ev.relays ?? []) {
+      if (!oldRelays.has(r)) {
+        oldRelays.add(r);
+        hasNew = true;
+      }
+    }
+    if (hasNew) {
+      db.exec("update events set relays = ? where id = ?", {
+        bind: [[...oldRelays].join(","), ev.id],
+      });
+    }
   }
 
   /**
@@ -188,10 +226,14 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
         if (req.ids_only === true) {
           return a[0] as string;
         }
-        return JSON.parse(a[0] as string) as NostrEvent;
+        const ev = JSON.parse(a[0] as string) as NostrEvent;
+        return {
+          ...ev,
+          relays: (a[1] as string | null)?.split(","),
+        };
       }) ?? [];
     const time = unixNowMs() - start;
-    this.#log(`Query ${id} results took ${time.toLocaleString()}ms`);
+    this.#log(`Query ${id} results took ${time.toLocaleString()}ms`, req);
     return results;
   }
 
@@ -252,22 +294,14 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
    */
   async dump() {
     const filePath = String(this.db?.filename ?? "");
-    try {
-      this.db?.close();
-      this.db = undefined;
-      const dir = await navigator.storage.getDirectory();
-      // @ts-expect-error
-      for await (const [name, file] of dir) {
-        if (`/${name}` === filePath) {
-          const fh = await (file as FileSystemFileHandle).getFile();
-          const ret = new Uint8Array(await fh.arrayBuffer());
-          return ret;
-        }
+    if (this.db && this.#pool) {
+      try {
+        return await this.#pool.exportFile(`/${filePath}`);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        await this.#open(filePath);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      await this.#open(filePath);
     }
     return new Uint8Array();
   }
@@ -276,7 +310,7 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
     const conditions: Array<string> = [];
     const params: Array<any> = [];
 
-    let resultType = "json";
+    let resultType = "json,relays";
     if (count) {
       resultType = "count(json)";
     } else if (req.ids_only === true) {
@@ -287,9 +321,9 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
       operation = "delete";
     }
     let sql = `${operation} from events`;
-    const tags = Object.entries(req).filter(([k]) => k.startsWith("#"));
+    const orTags = Object.entries(req).filter(([k]) => k.startsWith("#"));
     let tx = 0;
-    for (const [key, values] of tags) {
+    for (const [key, values] of orTags) {
       const vArray = values as Array<string>;
       sql += ` inner join tags t_${tx} on events.id = t_${tx}.event_id and t_${tx}.key = ? and t_${tx}.value in (${this.#repeatParams(
         vArray.length,
@@ -297,6 +331,15 @@ export class SqliteRelay extends EventEmitter<RelayHandlerEvents> implements Rel
       params.push(key.slice(1));
       params.push(...vArray);
       tx++;
+    }
+    const andTags = Object.entries(req).filter(([k]) => k.startsWith("&"));
+    for (const [key, values] of andTags) {
+      for (const value of values as Array<string>) {
+        sql += ` inner join tags t_${tx} on events.id = t_${tx}.event_id and t_${tx}.key = ? and t_${tx}.value = ?`;
+        params.push(key.slice(1));
+        params.push(value);
+        tx++;
+      }
     }
     if (req.search) {
       sql += " inner join search_content on search_content.id = events.id";

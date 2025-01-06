@@ -3,12 +3,10 @@ import * as utils from "@noble/curves/abstract/utils";
 import { unwrap } from "@snort/shared";
 
 import {
-  decodeEncryptionPayload,
   EventKind,
   EventSigner,
   FullRelaySettings,
   HexKey,
-  MessageEncryptorVersion,
   NostrEvent,
   NostrLink,
   NotSignedNostrEvent,
@@ -26,7 +24,6 @@ import {
 import { EventBuilder } from "./event-builder";
 import { findTag } from "./utils";
 import { Nip7Signer } from "./impl/nip7";
-import { base64 } from "@scure/base";
 import { Nip10 } from "./impl/nip10";
 
 type EventBuilderHook = (ev: EventBuilder) => EventBuilder;
@@ -62,7 +59,7 @@ export class EventPublisher {
   /**
    * Create an EventPublisher for a private key
    */
-  static privateKey(privateKey: string) {
+  static privateKey(privateKey: string | Uint8Array) {
     const signer = new PrivateKeySigner(privateKey);
     return new EventPublisher(signer, signer.getPubKey());
   }
@@ -262,23 +259,6 @@ export class EventPublisher {
     return await this.#sign(eb);
   }
 
-  /**
-   * Generic decryption using NIP-23 payload scheme
-   */
-  async decryptGeneric(content: string, from: string) {
-    const pl = decodeEncryptionPayload(content);
-    switch (pl.v) {
-      case MessageEncryptorVersion.Nip4: {
-        const nip4Payload = `${base64.encode(pl.ciphertext)}?iv=${base64.encode(pl.nonce)}`;
-        return await this.#signer.nip4Decrypt(nip4Payload, from);
-      }
-      case MessageEncryptorVersion.XChaCha20: {
-        return await this.#signer.nip44Decrypt(content, from);
-      }
-    }
-    throw new Error("Not supported version");
-  }
-
   async decryptDm(note: NostrEvent) {
     if (note.kind === EventKind.SealedRumor) {
       const unseal = await this.unsealRumor(note);
@@ -334,6 +314,7 @@ export class EventPublisher {
       eb.pow(powTarget, powMiner);
     }
     eb.content(await signer.nip44Encrypt(JSON.stringify(inner), pTag));
+    eb.jitter(60 * 60 * 24);
 
     return await eb.buildAndSign(secret);
   }

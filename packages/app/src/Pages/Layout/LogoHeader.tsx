@@ -9,10 +9,25 @@ import useLogin from "../../Hooks/useLogin";
 import { isBirthday, isChristmas, isHalloween, isStPatricksDay } from "../../Utils";
 import { getCurrentSubscription } from "../../Utils/Subscription";
 
+function ordinal_suffix_of(i: number) {
+  const j = i % 10;
+  const k = i % 100;
+  if (j === 1 && k !== 11) {
+    return i + "st";
+  }
+  if (j === 2 && k !== 12) {
+    return i + "nd";
+  }
+  if (j === 3 && k !== 13) {
+    return i + "rd";
+  }
+  return i + "th";
+}
+
 const getExtra = () => {
   if (isBirthday()) {
-    const age = (unixNowMs() - Birthday.getTime()) / (Day * 365_000);
-    return <span className="text-xs">{age.toFixed(0)}st 🎂</span>;
+    const age = Math.floor((unixNowMs() - Birthday.getTime()) / (Day * 365_000));
+    return <span className="text-xs">{ordinal_suffix_of(age)} 🎂</span>;
   }
   if (isHalloween()) return <span title="Happy Halloween!">🎃</span>;
   if (isStPatricksDay()) return <span title="Happy St. Patrick's Day!">🍀</span>;
@@ -20,7 +35,7 @@ const getExtra = () => {
 };
 
 export function LogoHeader({ showText = false }: { showText: boolean }) {
-  const { subscriptions } = useLogin();
+  const subscriptions = useLogin(s => s.subscriptions);
   const currentSubscription = getCurrentSubscription(subscriptions);
 
   const appName = CONFIG.appName === "iris" && isStPatricksDay() ? "Irish" : CONFIG.appName;

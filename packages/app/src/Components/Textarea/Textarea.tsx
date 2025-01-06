@@ -1,7 +1,7 @@
 import "@webscopeio/react-textarea-autocomplete/style.css";
 import "./Textarea.css";
 
-import { NostrPrefix } from "@snort/system";
+import { NostrLink } from "@snort/system";
 import ReactTextareaAutocomplete from "@webscopeio/react-textarea-autocomplete";
 import { useIntl } from "react-intl";
 import TextareaAutosize from "react-textarea-autosize";
@@ -9,8 +9,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import Avatar from "@/Components/User/Avatar";
 import Nip05 from "@/Components/User/Nip05";
 import { FuzzySearchResult } from "@/Db/FuzzySearch";
-import { userSearch } from "@/Hooks/useProfileSearch";
-import { hexToBech32 } from "@/Utils";
+import useProfileSearch from "@/Hooks/useProfileSearch";
 import searchEmoji from "@/Utils/emoji-search";
 
 import messages from "../messages";
@@ -59,6 +58,7 @@ interface TextareaProps {
 
 const Textarea = (props: TextareaProps) => {
   const { formatMessage } = useIntl();
+  const userSearch = useProfileSearch();
 
   const userDataProvider = (token: string) => {
     return userSearch(token).slice(0, 10);
@@ -86,7 +86,7 @@ const Textarea = (props: TextareaProps) => {
           afterWhitespace: true,
           dataProvider: userDataProvider,
           component: (props: { entity: FuzzySearchResult }) => <UserItem {...props.entity} />,
-          output: (item: { pubkey: string }) => `@${hexToBech32(NostrPrefix.PublicKey, item.pubkey)}`,
+          output: (item: { pubkey: string }) => `@${NostrLink.profile(item.pubkey).encode()}`,
         },
       }}
     />

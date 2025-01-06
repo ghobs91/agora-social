@@ -1,12 +1,16 @@
-import { EventKind, HexKey, RequestBuilder, socialGraphInstance } from "@snort/system";
+import { EventKind, HexKey, RequestBuilder } from "@snort/system";
 import { useRequestBuilder } from "@snort/system-react";
 import { useMemo } from "react";
 
+import useWoT from "@/Hooks/useWoT";
+
 export default function useFollowersFeed(pubkey?: HexKey) {
+  const wot = useWoT();
   const sub = useMemo(() => {
-    if (!pubkey) return null;
-    const b = new RequestBuilder(`followers:${pubkey.slice(0, 12)}`);
-    b.withFilter().kinds([EventKind.ContactList]).tag("p", [pubkey]);
+    const b = new RequestBuilder(`followers`);
+    if (pubkey) {
+      b.withFilter().kinds([EventKind.ContactList]).tag("p", [pubkey]);
+    }
     return b;
   }, [pubkey]);
 
@@ -16,9 +20,7 @@ export default function useFollowersFeed(pubkey?: HexKey) {
     const contactLists = followersFeed?.filter(
       a => a.kind === EventKind.ContactList && a.tags.some(b => b[0] === "p" && b[1] === pubkey),
     );
-    return [...new Set(contactLists?.map(a => a.pubkey))].sort((a, b) => {
-      return socialGraphInstance.getFollowDistance(a) - socialGraphInstance.getFollowDistance(b);
-    });
+    return wot.sortEvents(contactLists);
   }, [followersFeed, pubkey]);
 
   return followers;

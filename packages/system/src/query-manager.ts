@@ -56,7 +56,9 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
       });
 
       this.#queries.set(req.id, q);
-      this.emit("change");
+      if (req.numFilters > 0) {
+        this.emit("change");
+      }
       return q;
     }
   }
@@ -94,6 +96,11 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
     // check for empty filters
     filters = trimFilters(filters);
 
+    if (filters.length === 0) {
+      this.#log("Dropping %s %o", q.id);
+      return;
+    }
+
     // automated outbox model, load relays for queried authors
     for (const f of filters) {
       if (f.authors) {
@@ -105,8 +112,8 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
     // fetch results from cache first, flag qSend for sync
     if (this.#system.cacheRelay) {
       const data = await this.#system.cacheRelay.query(["REQ", q.id, ...filters]);
+      syncFrom = data;
       if (data.length > 0) {
-        syncFrom = data.map(a => ({ ...a, relays: [] }));
         this.#log("Adding from cache %s %O", q.id, data);
         q.feed.add(syncFrom);
       }
@@ -131,35 +138,25 @@ export class QueryManager extends EventEmitter<QueryManagerEvents> {
     if (this.#system.requestRouter) {
       filters = this.#system.requestRouter.forAllRequest(filters);
     }
-    const expanded = filters.flatMap(a => this.#system.optimizer.expandFilter(a));
-    const qSend = this.#groupFlatByRelay(expanded);
-    qSend.forEach(a => (a.syncFrom = syncFrom));
-    await Promise.all(qSend.map(a => this.#sendToRelays(q, a)));
-  }
 
-  #groupFlatByRelay(filters: Array<FlatReqFilter>) {
-    const relayMerged = filters.reduce((acc, v) => {
-      const relay = v.relay ?? "";
-      // delete relay from filter
-      delete v.relay;
-      const existing = acc.get(relay);
-      if (existing) {
-        existing.push(v);
-      } else {
-        acc.set(relay, [v]);
-      }
-      return acc;
-    }, new Map<string, Array<FlatReqFilter>>());
-
-    const ret = [];
-    for (const [k, v] of relayMerged.entries()) {
-      const filters = this.#system.optimizer.flatMerge(v);
-      ret.push({
+    const compressed = this.#system.optimizer.compress(filters).reduce(
+      (acc, v) => {
+        for (const r of v.relays ?? [""]) {
+          acc[r] ??= [];
+          acc[r].push(v);
+        }
+        return acc;
+      },
+      {} as Record<string, Array<ReqFilter>>,
+    );
+    const qSend = Object.entries(compressed).map(([k, v]) => {
+      return {
         relay: k,
-        filters,
-      } as BuiltRawReqFilter);
-    }
-    return ret;
+        filters: v,
+        syncFrom,
+      } as BuiltRawReqFilter;
+    });
+    await Promise.all(qSend.map(a => this.#sendToRelays(q, a)));
   }
 
   async #sendToRelays(q: Query, qSend: BuiltRawReqFilter) {
